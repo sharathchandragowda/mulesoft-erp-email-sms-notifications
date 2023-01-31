@@ -1,0 +1,50 @@
+{
+  "token": "TN6Dnf",
+  "event": "Showroom - Status Update",
+  "customer_properties": {
+    "first_name": "Elan",
+    "last_name": "Williams",
+    "region": "FL",
+    "email": "aquinnahholdings@gmail.com",
+    "phone_number": "206-940-1279"
+  },
+  "properties": {
+    "Line_Item": [
+      {
+        "Product Name": "Eternity Decorative Mirrors by Elegant Decor",
+        "Product Image URL": "https://transform.dis.commercecloud.salesforce.com/transform/BCFP_PRD/on/demandware.static/-/Sites-masterCatalog_capitollighting/default/images/original/Elegant-Decor_MR4077BK.jpg",
+        "Product URL": "https://www.1800lighting.com/elegant-decor-eternity-decorative-mirrors-2636688.html",
+        "Product ID": "2636688",
+        "Product SKU": "MR4077BK",
+        "Product Variant": "Finish:</b> Black, Glass:</b> Clear Mirror Beveled",
+        "Quantity": 1,
+        "Price": 216,
+        "Total Price": 216,
+        "Estimated Ship Date": "12/27/2022"
+      }
+    ],
+    "Profile": {
+      "Customer Email Address": "aquinnahholdings@gmail.com",
+      "Order Number": "70365168",
+      "Store Name": "Boca Raton",
+      "Shipping Name": "Capitol Lighting - Boca Raton",
+      "Shipping Company": "",
+      "Shipping Address Line 1": "7301 NORTH FEDERAL HWY",
+      "Shipping Address Line 2": "",
+      "Shipping City": "Boca Raton",
+      "Shipping State": "FL",
+      "Shipping Zip Code": "33487",
+      "Shipping Country": "USA",
+      "Shipping Phone": "206-940-1279",
+      "Billing Name": "Lawrence And Jacqueline Hasen",
+      "Billing Company": "",
+      "Billing Address Line 1": "1811 Sw 17th St",
+      "Billing Address Line 2": "",
+      "Billing City": "Boca Raton",
+      "Billing State": "FL",
+      "Billing Zip Code": "33486",
+      "Billing Country": "USA",
+      "Billing Phone": "206-940-1279"
+    }
+  }
+}

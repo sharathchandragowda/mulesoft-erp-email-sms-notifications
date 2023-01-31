@@ -1,0 +1,86 @@
+{
+  "token": "TN6Dnf",
+  "event": "Status Update",
+  "customer_properties": {
+    "$first_name": "Homer",
+    "$last_name": "Simpson",
+    "$region": "NJ",
+    "$email": "homer@simpsons.com",
+    "$phone_number": "9735551234"
+  },
+  "properties": {
+    "Line_Item": [
+      {
+        "Product Name": "Chapman and Myers Atlantic Large Pendant",
+        "Product Image URL": "https://urldefense.com/v3/__https://hosting-source.bm23.com/29875/public/showroomtranx/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC$  ",
+        "Product URL": "https://urldefense.com/v3/__https://www.1800lighting.com/generation-lighting-chapman-and-myers-atlantic-large-pendant-2643796.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJXGHqYsx$  ",
+        "Product ID": "2643796",
+        "Product SKU": "CP1041BBS",
+        "Product Variant": "Finish: Burnished Brass, Glass: Clear , Lamp Type: Incandescant",
+        "Quantity": 2,
+        "Price": 559.97,
+        "Total Price": 1194.14,
+        "Estimated Ship Date": "2023-01-01"
+      },
+      {
+        "Product Name": "Chapman and Myers Arden 24 Inch 10 Light Chandelier",
+        "Product Image URL": "https://urldefense.com/v3/__https://hosting-source.bm23.com/29875/public/showroomtranx/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC$  ",
+        "Product URL": "https://urldefense.com/v3/__https://www.1800lighting.com/generation-lighting-chapman-and-myers-arden-24-inch-10-light-chandelier-2778605.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJap6r4MB$  ",
+        "Product ID": "2778605",
+        "Product SKU": "CC12610BBS",
+        "Product Variant": "Finish: Burnished Brass, Lamp Type: Incandescant",
+        "Quantity": 1,
+        "Price": 1669.98,
+        "Total Price": 1780.62,
+        "Estimated Ship Date": "2023-02-01"
+      },
+      {
+        "Product Name": "Cox 10 Inch Wall Sconce",
+        "Product Image URL": "https://urldefense.com/v3/__https://hosting-source.bm23.com/29875/public/showroomtranx/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC$  ",
+        "Product URL": "https://urldefense.com/v3/__https://www.1800lighting.com/quoizel-cox-10-inch-wall-sconce-4231078.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJdPLobk8$  ",
+        "Product ID": "4231078",
+        "Product SKU": "COX8604MBK",
+        "Product Variant": "Finish: Matte Black, Color Temperature: Bulb Dependent, Lumen Output: Bulb Dependent, Glass: Clear, Lamp Type: Incandescant",
+        "Quantity": 4,
+        "Price": 69.99,
+        "Total Price": 298.51,
+        "Estimated Ship Date": "2022-11-15"
+      },
+      {
+        "Product Name": "Newbury 22 Inch Tall 3 Light Outdoor Wall Light",
+        "Product Image URL": "https://urldefense.com/v3/__https://hosting-source.bm23.com/29875/public/showroomtranx/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC$  ",
+        "Product URL": "https://urldefense.com/v3/__https://www.1800lighting.com/quoizel-newbury-22-inch-tall-3-light-outdoor-wall-light-7388852.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJfdq6K9_$  ",
+        "Product ID": "7388852",
+        "Product SKU": "NY8318Z",
+        "Product Variant": "Finish: Medici Bronze, Glass: Clear Beveled, Lamp Type: Incandescant",
+        "Quantity": 4,
+        "Price": 215.99,
+        "Total Price": 921.2,
+        "Estimated Ship Date": "2022-12-01"
+      }
+    ],
+    "Profile": {
+      "Customer Email Address": "homer@simpsons.com",
+      "Order Number": "00062806",
+      "Store Name": "",
+      "Shipping Name": "Homer Simpson",
+      "Shipping Company": "",
+      "Shipping Address Line 1": "7 Downing Place",
+      "Shipping Address Line 2": "",
+      "Shipping City": "Livingston",
+      "Shipping State": "NJ",
+      "Shipping Zip Code": "07039",
+      "Shipping Country": "US",
+      "Shipping Phone": "9735551234",
+      "Billing Name": "Homer Simpson",
+      "Billing Company": "",
+      "Billing Address Line 1": "7 Downing Place",
+      "Billing Address Line 2": "",
+      "Billing City": "Livingston",
+      "Billing State": "NJ",
+      "Billing Zip Code": "07039",
+      "Billing Country": "US",
+      "Billing Phone": "9735551234"
+    }
+  }
+}

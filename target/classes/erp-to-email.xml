@@ -1,0 +1,813 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:outlook365="http://www.mulesoft.org/schema/mule/outlook365" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:email="http://www.mulesoft.org/schema/mule/email"
+	xmlns:twilio="http://www.mulesoft.org/schema/mule/twilio" xmlns:klaviyo-api="http://www.mulesoft.org/schema/mule/klaviyo-api" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/klaviyo-api http://www.mulesoft.org/schema/mule/klaviyo-api/current/mule-klaviyo-api.xsd
+http://www.mulesoft.org/schema/mule/twilio http://www.mulesoft.org/schema/mule/twilio/current/mule-twilio.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/outlook365 http://www.mulesoft.org/schema/mule/outlook365/current/mule-outlook365.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="675f481f-42ed-429d-8864-45afd79fb467" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<klaviyo-api:config name="Klaviyo_API_Config" doc:name="Klaviyo API Config" doc:id="056dd50f-ba3f-47c5-b466-f1cd6dc76e33"/>
+	<twilio:config name="Twilio_Connector_Config" doc:name="Twilio Connector Config" doc:id="51c44fae-971c-408a-9130-101f9f3531c6" >
+		<twilio:account-sid-auth-token-connection/>
+	</twilio:config>
+	    <email:smtp-config name="Email_SMTP" doc:name="Email SMTP" doc:id="7fa522a2-51cb-40dd-8386-48896ceb838f" >
+        <email:smtp-connection timeoutUnit="MINUTES" connectionTimeout="2" readTimeout="2" writeTimeout="2">
+        <email:properties>
+            <email:property key="mail.smtp.starttls.enable" value="true" />
+            <email:property key="mail.debug" value="true" />
+        </email:properties>
+        </email:smtp-connection>
+    </email:smtp-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="1d79e1e0-55c4-4be8-832d-110ba6eadbcd" >
+		<db:mssql-connection/>
+	</db:config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="52568bad-25d1-4e06-a6ef-faceaa77b172" >
+		<http:request-connection host="a.klaviyo.com" />
+		<http:default-headers >
+			<http:default-header key="Revision" value=" 2022-10-17" />
+		</http:default-headers>
+	</http:request-config>
+	<flow name="erp-to-emailFlow" doc:id="ca9a2e33-8a59-424a-91b3-ab1f75932333" >
+		<http:listener doc:name="Listener" doc:id="aa76ab90-b483-45ba-b165-ccc912e39b61" config-ref="HTTP_Listener_config" path="/erp-to-email"/>
+	 <db:select doc:name="Get Data from ERP" doc:id="49bbc5b4-9867-4a53-a7a8-230a42974197" config-ref="Database_Config">
+			<db:sql><![CDATA[SELECT  d.DetailID,
+  d.PrimaryValue as PrimValue,
+  d.ProductName,
+  d.ProductImageURL,
+  d.ProductURL,
+  d.ProductID,
+  d.ProductSKU,
+  d.ProductVariant,
+  d.Quantity,
+  d.Price,
+  d.TotalPrice,
+  d.EstimatedShipDate,
+  d.EstimatedArrivalDate,
+  d.TrackingID,
+  d.TrackingURL,
+  d.ShippingMethod,
+  d.ShipDate,
+  d.CustomerEmail,
+  h.*
+FROM master.dbo.detail d 
+INNER JOIN master.dbo.header h ON d.PrimaryValue =h.PrimaryValue 
+]]></db:sql>
+		</db:select>
+		<ee:transform doc:name="Map Data" doc:id="a6034c66-9ad2-4406-8594-a99d8de30fe2" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	token: payload.KlaviyoToken[0],
+	event: payload.MessageEvent[0],
+	customer_properties: {
+		"first_name": splitBy(payload.ManagerName[0]," ")[0],
+		"last_name": splitBy(payload.ManagerName[0]," ")[1],
+		"region": payload.ShippingState[0],
+		"email": payload.CustomerEmail[0],
+		"phone_number": payload.ShippingPhone[0],
+	},
+	properties: {
+		Line_Item: payload map ( payload01 , indexOfPayload01 ) -> {
+			"Product Name": payload01.ProductName,
+			"Product Image URL": payload01.ProductImageURL,
+			"Product URL": payload01.ProductURL,
+			"Product ID": payload01.ProductID,
+			"Product SKU": payload01.ProductSKU,
+			"Product Variant": payload01.ProductVariant,
+			Quantity: payload01.Quantity as Number,
+			Price: payload01.Price as Number,
+			"Total Price": payload01.TotalPrice as Number,
+			"Estimated Ship Date": payload01.EstimatedShipDate
+		},
+		Profile: {
+			"Customer Email Address": payload.CustomerEmailAddress[0],
+			"Order Number": payload.OrderNumber[0],
+			"Store Name": payload.StoreName[0],
+			"Shipping Name": payload.ShippingName[0],
+			"Shipping Company": payload.ShippingCompany[0],
+			"Shipping Address Line 1": payload.ShippingAddressLine1[0],
+			"Shipping Address Line 2": payload.ShippingAddressLine2[0],
+			"Shipping City": payload.ShippingCity[0],
+			"Shipping State": payload.ShippingState[0],
+			"Shipping Zip Code": payload.ShippingZipCode[0],
+			"Shipping Country": payload.ShippingCountry[0],
+			"Shipping Phone": payload.ShippingPhone[0],
+			"Billing Name": payload.BillingName[0],
+			"Billing Company": payload.BillingCompany[0],
+			"Billing Address Line 1": payload.BillingAddressLine1[0],
+			"Billing Address Line 2": payload.BillingAddressLine2[0],
+			"Billing City": payload.BillingCity[0],
+			"Billing State": payload.BillingState[0],
+			"Billing Zip Code": payload.BillingZipCode[0],
+			"Billing Country": payload.BillingCountry[0],
+			"Billing Phone": payload.BillingPhone[0]
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<scatter-gather doc:name="Scatter-Gather" doc:id="a897c920-19dc-4b9d-9430-2c858ab657f7" >
+			<route >
+				<ee:transform doc:name="Twilio Request" doc:id="528271c6-2bfb-4aad-b09f-29309d773e02">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/x-www-form-urlencoded
+---
+{
+	To: "3126186886",
+	From: "+1 312 618 6886",
+	Body: "Hello " ++ payload.customer_properties."first_name" ++ " " ++ payload.customer_properties."last_name" ++ ",Great news! Your order have shipped!"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<twilio:create20100401-accounts-messagesjson-by-account-sid doc:name="Create Message" doc:id="b98a81f6-55a9-400d-93df-3e896c7ea8ee" config-ref="Twilio_Connector_Config" accountSid="AC5482c1767e19c6458b823d2cdca27b6b"/>
+			</route>
+			<route >
+				  <ee:transform doc:name="Map to Email Template" doc:id="1e6cc6b3-756f-40de-b8eb-4f17a7b212fe" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+"<html>
+<body>
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\" id=\"m_3927316636195078776m_-334363850199881765bodyTable\">
+<tbody>
+<tr>
+<td width=\"100%\" valign=\"top\" style=\"width:100.0%;padding:37.5pt 15.0pt 15.0pt 15.0pt\" id=\"m_3927316636195078776m_-334363850199881765bodyCell\">
+<div>
+<div>
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:6.75pt 13.5pt 6.75pt 13.5pt\"></td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;min-width:100%\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 7.5pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;min-width:100%\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uUc37CuWG3-2B-2F9vZtC-2F7-2F03AbO5YgPKXbY3lY6aAw6UDDiPQB3e6-2F3gPLEH1XgO1HufhNUzXMzdJ1Ih-2FY7l99h0-2F-2F1gio-2FxatWjP6PejR1MYZuu5aVdcVUqgHhJDSmUtyfGWlltbpq6arBo5wR1C0CEFXV43cSj9fwoSDUokXYJ90LNx-2FdHRvCJ-2FTHlNXpQi7tf-2BzJRBRFYTDOJDwZY2f72k3uyUWSQUY5gzYl8zzp7H-2FjJ3gVaZPCy7Smdvilqr0zKCLic03nfzlRcNyhEA34NIXdCn-2FPP6HfmQjTF4UJzalTz0Cpopc6eD7uejRd9xLsjgXQC9KWnd0wkNr0K5UyhlpjHPZocLNjnyW3n6vm6MBDCpBntiEQH4osdzI06Nu0-3DatDd_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg88uwlFNQ4rtVXvDIsPfDU0f-2BLsh9pLjxu9cp0mblS0Tvgvt0ghumlB2upr3pdGfxv5xEUyQlPGldyAQYzn-2BIDduJS4IFj5XLubjp9kJqz3g50Q22yTryy0srsrL4AOWw042TUaRRYsjm25R3QQPkbOjnLHPLkMUQJ46KyTa7wJuRpXDad4-2B2DCY25pWFUlybg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfsbMdiDT\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uUc37CuWG3-2B-2F9vZtC-2F7-2F03AbO5YgPKXbY3lY6aAw6UDDiPQB3e6-2F3gPLEH1XgO1HufhNUzXMzdJ1Ih-2FY7l99h0-2F-2F1gio-2FxatWjP6PejR1MYZuu5aVdcVUqgHhJDSmUtyfGWlltbpq6arBo5wR1C0CEFXV43cSj9fwoSDUokXYJ90LNx-2FdHRvCJ-2FTHlNXpQi7tf-2BzJRBRFYTDOJDwZY2f72k3uyUWSQUY5gzYl8zzp7H-2FjJ3gVaZPCy7Smdvilqr0zKCLic03nfzlRcNyhEA34NIXdCn-2FPP6HfmQjTF4UJzalTz0Cpopc6eD7uejRd9xLsjgXQC9KWnd0wkNr0K5UyhlpjHPZocLNjnyW3n6vm6MBDCpBntiEQH4osdzI06Nu0-3DatDd_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg88uwlFNQ4rtVXvDIsPfDU0f-2BLsh9pLjxu9cp0mblS0Tvgvt0ghumlB2upr3pdGfxv5xEUyQlPGldyAQYzn-2BIDduJS4IFj5XLubjp9kJqz3g50Q22yTryy0srsrL4AOWw042TUaRRYsjm25R3QQPkbOjnLHPLkMUQJ46KyTa7wJuRpXDad4-2B2DCY25pWFUlybg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfsbMdiDT\$\&amp;source=gmail\&amp;ust=1672441602012000\&amp;usg=AOvVaw0sleWjiScvFrZej1WcBuQA\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:blue\"><img border=\"0\" width=\"582\" style=\"width:6.0625in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1040\" src=\"https://ci5.googleusercontent.com/proxy/UyMrJOEjMNWg_QkBo8_dPN5L9K8w4fvAaidsd7LF15K-Q7jodZ7NrrmOUro77SYNxlZMawIH19xn2XnanMcS5iqjhpU9Di3-nmhmZvYd2xaGWuT96C46FFQAfoYu_sH1bKA1EKlw8Xapvk3Y8UjclGL8xuYtwIA-=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/a429e43b-0aa4-4d14-b907-2b1b6a0e290f.jpeg\" alt=\"1-800Lighting\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td style=\"padding:7.5pt 0in 15.0pt 0in\">
+<table border=\"1\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;border:none\">
+<tbody>
+<tr>
+<td style=\"border:none;border-top:solid #cccccc 1.0pt;padding:0in 0in 0in 0in\"></td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+</tr>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\"></td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+</tr>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:6.75pt 22.5pt 18.75pt 22.5pt\">
+<h3 style=\"margin-right:0in;margin-bottom:9.0pt;margin-left:0in\">
+<span style=\"font-size:18.0pt;font-family:Montserrat;color:#403e3d\">SHIPPING CONFIRMATION<u></u><u></u></span></h3>
+<p align=\"center\" style=\"margin-top:11.25pt;text-align:center\">Order Number:&nbsp;" ++ payload.properties.Profile."Order Number" ++ "<u></u><u></u></p>
+<p align=\"center\" style=\"text-align:center\"><span style=\"font-size:10.0pt\">Hello&nbsp;" ++ payload.customer_properties."first_name" ++ " " ++ payload.customer_properties."last_name" ++ ", Great news!&nbsp;The following item(s) from your order have shipped! You can track your order at any time at
+<a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uFet2NMp5UBdZZ4Xk0jILSSdKb0NrNIJfT-2FpjNpEGVERGGpSS7Vgv0-2BB0mK0e1RrjFdCuE6GPTSOwlDsxSxbcP0EGpQcmCeF-2FIQlR0SzEmRC0pqTZsI50SQDrydMOj-2BiJhHVk93NOjXFoCdlavTwmCCuAh4V3vtQY-2BkhJlM64HrGUvIA9zERp1NsiWNaQoX-2BkUW9NEaPoudsWuakMnRw3ZuPxRfDoORvUoncg7ze1mJ5SZvOpa9WBRbzdBDf-2BazxgIljMFnhBoBczj77TVy6yDZutOhmVIu7UwgNMvlIy0wg5wqKYcuvZyAqvzqr-2BMIUMJO7u5YB2u-2FhPPV-2BFIYaSeDMNDdWPAbT0dyaC8hvorx3OKz-2FRjI3vXBj2jXemzCKTGBy5JejVcalxqTnVX5W2Et1SBy1-2B-2FGnjZ36ygKeBGsL2JrJTEL2VLMXmlE6qSDaY-3Dbzvb_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwaZvUo-2B6nP1b1dE90Wqqg7Lj4XPrdhv4Jr-2BuJW26z02ikjsyt8HDDc-2BIeavCJ-2Fv5YzHXhBjsHfF8jmzSDyIYThdaChYVrxK4KSEPtCbZlfK9Z7s9nhOiIZtjCAGRCmSi6HTr-2BICQkqB1IlpmuaKtPSCgZslIEyGptk4dVRfJ22lGKFIs5KsTUKiLXd5kcvPDg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfjAzQqYQ\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uFet2NMp5UBdZZ4Xk0jILSSdKb0NrNIJfT-2FpjNpEGVERGGpSS7Vgv0-2BB0mK0e1RrjFdCuE6GPTSOwlDsxSxbcP0EGpQcmCeF-2FIQlR0SzEmRC0pqTZsI50SQDrydMOj-2BiJhHVk93NOjXFoCdlavTwmCCuAh4V3vtQY-2BkhJlM64HrGUvIA9zERp1NsiWNaQoX-2BkUW9NEaPoudsWuakMnRw3ZuPxRfDoORvUoncg7ze1mJ5SZvOpa9WBRbzdBDf-2BazxgIljMFnhBoBczj77TVy6yDZutOhmVIu7UwgNMvlIy0wg5wqKYcuvZyAqvzqr-2BMIUMJO7u5YB2u-2FhPPV-2BFIYaSeDMNDdWPAbT0dyaC8hvorx3OKz-2FRjI3vXBj2jXemzCKTGBy5JejVcalxqTnVX5W2Et1SBy1-2B-2FGnjZ36ygKeBGsL2JrJTEL2VLMXmlE6qSDaY-3Dbzvb_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwaZvUo-2B6nP1b1dE90Wqqg7Lj4XPrdhv4Jr-2BuJW26z02ikjsyt8HDDc-2BIeavCJ-2Fv5YzHXhBjsHfF8jmzSDyIYThdaChYVrxK4KSEPtCbZlfK9Z7s9nhOiIZtjCAGRCmSi6HTr-2BICQkqB1IlpmuaKtPSCgZslIEyGptk4dVRfJ22lGKFIs5KsTUKiLXd5kcvPDg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfjAzQqYQ\$\&amp;source=gmail\&amp;ust=1672441602013000\&amp;usg=AOvVaw2077A_chCP3Ml9hPf4h5h5\">
+<span style=\"color:#b88c1d\">1800lighting.com/track-your-<wbr>order/</span></a>. Details are as follows:<u></u><u></u></span></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td style=\"padding:15.0pt 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\"></td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:6.75pt 0in 6.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<thead>
+<tr>
+<td width=\"40%\" valign=\"top\" style=\"width:40.0%;padding:3.0pt 0in 3.0pt 0in\"></td>
+<td width=\"60%\" valign=\"top\" style=\"width:60.0%;padding:3.0pt 0in 3.0pt 0in\"></td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width=\"40%\" valign=\"top\" style=\"width:40.0%;padding:3.0pt 3.0pt 31.5pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\" "++ payload.properties.Line_Item[0]."Product URL" as String ++  " \"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"200\" style=\"width:2.0833in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1039\" src="++ payload.properties.Line_Item[0]."Product Image URL" as String ++  " alt=\"Beacon Hill 32 Inch Tall 4 Light Outdoor Wall Light\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+<td width=\"60%\" valign=\"top\" style=\"width:60.0%;padding:3.0pt 3.0pt 31.5pt 0in\">
+<p><span style=\"font-size:10.0pt\"><a href=\" " ++ payload.properties.Line_Item[0]."Product URL" ++ " \"><span style=\"color:#b88c1d\">" ++ payload.properties.Line_Item[0]."Product Name" ++ "</span></a><br>
+<br>
+" ++ payload.properties.Line_Item[0]."Product Variant" ++ "<br>
+<br>
+Quantity Shipped: "++ payload.properties.Line_Item[0]."Quantity" as String ++  "<br>
+<br>
+Capitol ID: "++ payload.properties.Line_Item[0]."Product ID" as String ++  "<br>
+Manufacturer SKU:&nbsp;"++ payload.properties.Line_Item[0]."Product SKU" as String ++  "<br>
+<br>
+Shipped On:&nbsp;"++ payload.properties.Line_Item[0]."Estimated Ship Date" as String ++  "<br>
+Service:&nbsp;"++ payload.properties.Profile."Shipping Company" as String++  "<br>
+<br>
+Tracking ID:&nbsp;<a><span style=\"color:windowtext\">"++ payload.properties.Profile."Order Number" as String ++  "</span></a></span><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:7.5pt 0in 30.0pt 10.5pt\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<thead>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:3.0pt 7.5pt 3.0pt 0in\"></td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:3.0pt 7.5pt 3.0pt 0in\"></td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;border:none;border-top:solid #d9d9d9 1.0pt;padding:3.0pt 3.75pt 3.0pt 0in\">
+<h4 style=\"margin-right:0in;margin-bottom:6.75pt;margin-left:0in\">
+<span style=\"font-size:13.5pt;font-family:Montserrat;color:#403e3d\">SHIPPING INFORMATION:<u></u><u></u></span></h4>
+<p><span style=\"font-size:10.0pt\">" ++ payload.customer_properties."first_name" ++ " " ++ payload.customer_properties."last_name" ++ "<br>
+"++ payload.properties.Profile."Shipping Address Line 1" as String ++  "<br>
+"++ payload.properties.Profile."Shipping City" as String ++  ", "++ payload.properties.Profile."Shipping State" as String ++  ", "++ payload.properties.Profile."Shipping Zip Code" as String ++  " "++ payload.properties.Profile."Shipping Country" as String ++  "<u></u><u></u></span></p>
+</td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;border:none;border-top:solid #d9d9d9 1.0pt;padding:3.0pt 3.75pt 3.0pt 0in\">
+<h4 style=\"margin-right:0in;margin-bottom:6.75pt;margin-left:0in\">
+<span style=\"font-size:13.5pt;font-family:Montserrat;color:#403e3d\">BILLING INFORMATION:<u></u><u></u></span></h4>
+<p><span style=\"font-size:10.0pt\">"++ payload.properties.Profile."Billing Name" as String ++  "<br>
+"++ payload.properties.Profile."Billing Address Line 1" as String ++  "<br>
+"++ payload.properties.Profile."Billing City" as String ++  ", "++ payload.properties.Profile."Billing State" as String ++  ", "++ payload.properties.Profile."Billing Zip Code" as String ++  " "++ payload.properties.Profile."Billing Country" as String ++  "<u></u><u></u></span></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"background:#f1f1f1;padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:22.5pt 30.0pt 22.5pt 30.0pt\">
+<h4 style=\"margin-right:0in;margin-bottom:6.75pt;margin-left:0in\">
+<span style=\"font-size:13.5pt;font-family:Montserrat;color:#403e3d\">NEED HELP WITH YOUR ORDER?<u></u><u></u></span></h4>
+<p align=\"center\" style=\"text-align:center;line-height:15.0pt\"><span style=\"font-size:11.5pt\">Visit our customer care page to access
+<a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4tSuKhRyJzLwPA7FvOFeOKW9ccVw4NGw0-2Bx-2FTytWezXPNNU-2FwiqWoZjUsPkqaF-2FwHPvE-2FnyxAj3alJfx-2FMGRk7Gg-2BE-2BBZ9oyQ9qw2ZMGDxc-2FF5AgiLcNCsc2bf8wnbIPUg-2BT69odrasMK7jzQMQaFHhZU8iv1wqnMjyQ24GIgEq6lx0a9TULYtFFWl6S98bUsO1n5MWv-2Bb7O8Xl1JfWqENKZKL1gmLH4ik3-2B9hO2VJjE0OxmsFNWviksyeruT-2FUSBbaPUF4tl7QrSJ-2FflBQhLRGrYpe89letkd8vUPqp1vYgd8JCnhVJ1HG2iL-2FX9ECwTKRdWdYkL6D6bey3dgSsNOQ38EJPDiznCh8b-2FLzKizXOLxTV2KSWD3hKAfN56pv71VGLf9vtvJOwoq4vELjnY4DtKiC_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg5P5vtCG5ybmcBRu0BZF2QwRhqd0S8LGQJeQdWB-2BgGc-2F9kvddWfYfW7hjlygViYxpqkzAPyjXrj27AuzcAuguTH1t8i1u26kvSrKyswTaTIkO1sL5y73GLDOM5ubwpFAeZMPhObWeEmZrPIJ2TTQ-2FXVPcB5Hcd4tf46ooQFb13u5e0Zhug2ipBvOjiXlUq2Hng-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfjhbf2PW\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4tSuKhRyJzLwPA7FvOFeOKW9ccVw4NGw0-2Bx-2FTytWezXPNNU-2FwiqWoZjUsPkqaF-2FwHPvE-2FnyxAj3alJfx-2FMGRk7Gg-2BE-2BBZ9oyQ9qw2ZMGDxc-2FF5AgiLcNCsc2bf8wnbIPUg-2BT69odrasMK7jzQMQaFHhZU8iv1wqnMjyQ24GIgEq6lx0a9TULYtFFWl6S98bUsO1n5MWv-2Bb7O8Xl1JfWqENKZKL1gmLH4ik3-2B9hO2VJjE0OxmsFNWviksyeruT-2FUSBbaPUF4tl7QrSJ-2FflBQhLRGrYpe89letkd8vUPqp1vYgd8JCnhVJ1HG2iL-2FX9ECwTKRdWdYkL6D6bey3dgSsNOQ38EJPDiznCh8b-2FLzKizXOLxTV2KSWD3hKAfN56pv71VGLf9vtvJOwoq4vELjnY4DtKiC_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg5P5vtCG5ybmcBRu0BZF2QwRhqd0S8LGQJeQdWB-2BgGc-2F9kvddWfYfW7hjlygViYxpqkzAPyjXrj27AuzcAuguTH1t8i1u26kvSrKyswTaTIkO1sL5y73GLDOM5ubwpFAeZMPhObWeEmZrPIJ2TTQ-2FXVPcB5Hcd4tf46ooQFb13u5e0Zhug2ipBvOjiXlUq2Hng-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfjhbf2PW\$\&amp;source=gmail\&amp;ust=1672441602013000\&amp;usg=AOvVaw2BpbnL-WdvGcMpMTJA2HjJ\">
+<span style=\"color:#b88c1d\">FAQs</span></a>, <a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4t9ZFtJLj4-2Fw1tBv0EjOvGivtXl10YW0fIdcIfvCgJSZHwbMSNRttTNK6IFgHXZldc4aUOQ1dTgCVlBz65yoBMXKqPB5XryxxZeB6uzQ7SUMNwS34anSnAS6k7NPo7UCDOsKrKDyObY7NsU4qIlUKS7AYG4TON5telxxET-2FBwyqr1zEbTwkXrJhGK4XA7kwQ8tU5R8-2BJ2zGr-2Fm-2F-2BJqLzoTHTZK1-2BCyJTz7N75gWos7sgoo8QQmvq2qnIN-2B0uLslW-2Fvmlgf4aA-2FlxZ7X9u9ezU2rfr7DaTNxdBHp-2FHI7ao1XlW-2FruKFEAJHlv8lMQQZrgTpneuAt1NG8rKc16kOhTR3jRIRtP7-2FhYmxub1Wznw8LSpKnUJzOZfRfrvNsNTX6X8eNlr5yMVTsTXxYk1HnQDp4KH24qwsBfnVY7xKCmaKWtI6UnApWq5yLX8MZQXFBBV0-3DvRT9_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg9XXUU0XZAahMqZ3LH9ESTcfCh3do6GBc-2F7YFCWshL8m2I-2FwEtQRSTiXgWbPANSBcQlyGNAgosQOuKCH2T4N79KVerFVX8EpvX6RcvTTP2h1OwPA0fMmVjc9Nlwnj-2Bt22MhdskrW2BNGEYgAdkbk8CjeRkXN2fWPFD4X5Wk30bsMl-2Fuw8mEPmhLrtGO1A66RKw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfvXIfES9\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4t9ZFtJLj4-2Fw1tBv0EjOvGivtXl10YW0fIdcIfvCgJSZHwbMSNRttTNK6IFgHXZldc4aUOQ1dTgCVlBz65yoBMXKqPB5XryxxZeB6uzQ7SUMNwS34anSnAS6k7NPo7UCDOsKrKDyObY7NsU4qIlUKS7AYG4TON5telxxET-2FBwyqr1zEbTwkXrJhGK4XA7kwQ8tU5R8-2BJ2zGr-2Fm-2F-2BJqLzoTHTZK1-2BCyJTz7N75gWos7sgoo8QQmvq2qnIN-2B0uLslW-2Fvmlgf4aA-2FlxZ7X9u9ezU2rfr7DaTNxdBHp-2FHI7ao1XlW-2FruKFEAJHlv8lMQQZrgTpneuAt1NG8rKc16kOhTR3jRIRtP7-2FhYmxub1Wznw8LSpKnUJzOZfRfrvNsNTX6X8eNlr5yMVTsTXxYk1HnQDp4KH24qwsBfnVY7xKCmaKWtI6UnApWq5yLX8MZQXFBBV0-3DvRT9_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg9XXUU0XZAahMqZ3LH9ESTcfCh3do6GBc-2F7YFCWshL8m2I-2FwEtQRSTiXgWbPANSBcQlyGNAgosQOuKCH2T4N79KVerFVX8EpvX6RcvTTP2h1OwPA0fMmVjc9Nlwnj-2Bt22MhdskrW2BNGEYgAdkbk8CjeRkXN2fWPFD4X5Wk30bsMl-2Fuw8mEPmhLrtGO1A66RKw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfvXIfES9\$\&amp;source=gmail\&amp;ust=1672441602013000\&amp;usg=AOvVaw3JUHi7ERqjYtyVuxMZ3TZ-\">
+<span style=\"color:#b88c1d\">submit an order inquiry</span></a> or <a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uByCwkt2Lcx3VccAfoaqGNPhQjduPQe353KQEjKmICpR3hYWlm74OfM0CsICpQ-2FIuMY6wXxFF08FNxc-2BsAMvoPZvJ0IaNyWp5tX-2FDAy25vRkjz9wxDEp9n-2F8pCy-2BivmAgyzBv2DJNSiisZQ4MdhzIiam6VCSCBt7f6HQUByWqLIAdsmWCv2F7c4tLFeWjXuMIcbCyF8-2BJ4R9webA9HgRNYSEHHWWtVfMi7RltMdywxNGnrgjcjQhs26QxUrdT-2FDrcshYd4usRQqegvxuXw8j3RYIIzoLVn27R-2BfjO2t2w-2BEkPdLqowXDNbRbQTjZ54n-2FM1yLPG1RcSoaIDkdAaBuDele37KXPe5jHz6M-2FY9X0bRD1rYoNX-2F7GoayS4GzE0hdRfS7uEh79tBAzTeY0J-2FcYjg0HLp7CHwm8vRrqqc-2FYnJg-3D-3Dm1e0_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgzzswNMWxfPcgZdxdRCAcEeDHGf9gEs4vcVCMW65KLmjHHuOnd8CvMyI9Z4XPTY1JnCsik8bbOv4tETtluHVgFMn4eCeQUHSNcowDjp0hRm5Cd5QRPTOr4j2kmur4d4MaLu6wG3uGZPCupNOVOEob1gu1XfnHyDeRnGnWUzJVBwY0J6OXh2sev-2BHooPVKS-2FslA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfqu8bgWw\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uByCwkt2Lcx3VccAfoaqGNPhQjduPQe353KQEjKmICpR3hYWlm74OfM0CsICpQ-2FIuMY6wXxFF08FNxc-2BsAMvoPZvJ0IaNyWp5tX-2FDAy25vRkjz9wxDEp9n-2F8pCy-2BivmAgyzBv2DJNSiisZQ4MdhzIiam6VCSCBt7f6HQUByWqLIAdsmWCv2F7c4tLFeWjXuMIcbCyF8-2BJ4R9webA9HgRNYSEHHWWtVfMi7RltMdywxNGnrgjcjQhs26QxUrdT-2FDrcshYd4usRQqegvxuXw8j3RYIIzoLVn27R-2BfjO2t2w-2BEkPdLqowXDNbRbQTjZ54n-2FM1yLPG1RcSoaIDkdAaBuDele37KXPe5jHz6M-2FY9X0bRD1rYoNX-2F7GoayS4GzE0hdRfS7uEh79tBAzTeY0J-2FcYjg0HLp7CHwm8vRrqqc-2FYnJg-3D-3Dm1e0_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgzzswNMWxfPcgZdxdRCAcEeDHGf9gEs4vcVCMW65KLmjHHuOnd8CvMyI9Z4XPTY1JnCsik8bbOv4tETtluHVgFMn4eCeQUHSNcowDjp0hRm5Cd5QRPTOr4j2kmur4d4MaLu6wG3uGZPCupNOVOEob1gu1XfnHyDeRnGnWUzJVBwY0J6OXh2sev-2BHooPVKS-2FslA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfqu8bgWw\$\&amp;source=gmail\&amp;ust=1672441602013000\&amp;usg=AOvVaw3sCPmO_iisgoVIEAXBLyGy\">
+<span style=\"color:#b88c1d\">contact us</span></a>. Agents are available 7 days a week.<u></u><u></u></span></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:22.5pt 6.75pt 33.75pt 6.75pt\">
+<p><span style=\"font-size:10.0pt\">If there are any outstanding items on your purchase, you will receive subsequent emails as this merchandise ships or if the status changes.<u></u><u></u></span></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;min-width:100%\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;min-width:100%\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4v4XiFwfPsN-2BlloS9rNix0nukerQKQ6igZrlUTaa7uZBxDBe-2Fgn-2FGB1Y8b18-2Blx6AXFhSk9QhTK5nKtxT21Rw0kxR8x8eMpYwNsFT6CeVICet09KY1F9HqzvZMUx-2BD7axAj5MgLqBZZt4HbV-2Bmtq4QXSny1c9zcmLT4YsO99P3yiuQSiENWXEZfZcGD0GeIn65YJzhd1IMy0sE3ytyFf2WetcvU5aEpX823WLLe-2FTH7q3N3ZM5l9IGRK6LXsYTwrPyQHvkkRwwxwyGBxKH3e-2BVDeoR-2FivQCyDJmorJFrKf24mFxwSeHpjfwsrFWQHcCmvgwlKN8MseG-2BF11LW7kEOQJWfCcMAbsqv-2B-2Fh5K-2BV9UhRf0QrLGttzhsFfmBQL5FfNBVMvdM6ti8A2mqgz8riLmkp-2BCKn4gaV2kkLyJazWlT1A-3D-3De7eB_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgxV5IVSu-2FpKX70eLqnHliZExyHTsWRmXEt8ZGvCCtxUoFUQW7ILoH-2FH1vPbKrwpOGbMeBV9vBLnYnuAagmiAGwq-2BMQIyKquD08itz5frIJSAeHK-2FZHYFZLinplJ2D53I3UFFKEGS5tjVYkM14FIKettjm9zZ57LrnWTfkEEj1ndC6Q7tByE-2F9l9aqCgp1kghpg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfnU8BPSw\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4v4XiFwfPsN-2BlloS9rNix0nukerQKQ6igZrlUTaa7uZBxDBe-2Fgn-2FGB1Y8b18-2Blx6AXFhSk9QhTK5nKtxT21Rw0kxR8x8eMpYwNsFT6CeVICet09KY1F9HqzvZMUx-2BD7axAj5MgLqBZZt4HbV-2Bmtq4QXSny1c9zcmLT4YsO99P3yiuQSiENWXEZfZcGD0GeIn65YJzhd1IMy0sE3ytyFf2WetcvU5aEpX823WLLe-2FTH7q3N3ZM5l9IGRK6LXsYTwrPyQHvkkRwwxwyGBxKH3e-2BVDeoR-2FivQCyDJmorJFrKf24mFxwSeHpjfwsrFWQHcCmvgwlKN8MseG-2BF11LW7kEOQJWfCcMAbsqv-2B-2Fh5K-2BV9UhRf0QrLGttzhsFfmBQL5FfNBVMvdM6ti8A2mqgz8riLmkp-2BCKn4gaV2kkLyJazWlT1A-3D-3De7eB_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgxV5IVSu-2FpKX70eLqnHliZExyHTsWRmXEt8ZGvCCtxUoFUQW7ILoH-2FH1vPbKrwpOGbMeBV9vBLnYnuAagmiAGwq-2BMQIyKquD08itz5frIJSAeHK-2FZHYFZLinplJ2D53I3UFFKEGS5tjVYkM14FIKettjm9zZ57LrnWTfkEEj1ndC6Q7tByE-2F9l9aqCgp1kghpg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfnU8BPSw\$\&amp;source=gmail\&amp;ust=1672441602014000\&amp;usg=AOvVaw0Us18F3yM7xQuA83jPmqu_\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:blue\"><img border=\"0\" width=\"600\" style=\"width:6.25in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1038\" src=\"https://ci4.googleusercontent.com/proxy/J5Zvt5oWNlWN_0HAf1MTFlIPQkOgEVS8xT7PhUPYxF266bW-l23HxrQWhPYCeBA2MZWn1oPb03xDZuMN2BlNnE-N721ZA9IwgXrsjPEbX9fOQ0fwfEFD0iWotd98tRkBZ7V5R7U2vgSGRvv8melkoOmhn6Lw7Rs6=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/cff56f2a-7b87-4ccb-a8a0-19d947d57ff7.jpeg\" alt=\"Buy now, pay over time\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 7.5pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<thead>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 0in 0in\"></td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 0in 0in\"></td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF18McAaSj3nkvw7mcGWMGa2l8drPHSfALc2aEboYxUV2i1dhSSlPU-2F-2Fg02vLGnPSxJzqQWmHh2YLEVK0Xl27dDV45Lrqu1DhoID0ZGoRoBGIsjXR0vNFxGX1JRpdFfsNSR7Gf6Ql83f8PkFsRL2xHxCYpjXlhTtr6lL9wyDE-2BWQp3amcnW1xxnyTAG5r-2Fm8Getgm1zeV-2FtFmTNlNNWWIZ-2BPbNNooIRZvBVHMrdhCJynKJ6uoWno9a3NFvGaNydh-2BQhdHkSVkLU7L0VormcR-2B9naizVeAeXMZfLyZkGWoqHnosB4xviBAVo5OIMzSfyMv66fXplNsJ-2Bb-2Fs-2F4NkpKhvHGZQ-2B9CMP-2BT-2FB4vi42jOG2dcW3YgpceAErdVAhuecbgA078SCHVPlmKL0jXSeIFtkVqkM-2F8XYtQ-2BGWDDL0lxIE-2FCKTkm_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgyFvjSxeiDUjWhiiev2Rt-2FK7y1cb1WV-2Fx-2BU09Ep8sL7M91De19ZNenrDFOIlZD7knfebqzC90t-2FU0BXCi6oZbaE7lLbZLR0-2FeAjqAfpieSVoEZCq-2FJ0HR8cmFNzW9Y-2FBbbU24XxJaeaUE-2BDaLIsMaSBTjxyMnuSjoYJWLJcwT4jbdJjNw5i6DdK4bBTDQZ9Zaw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuJR8Pbd\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF18McAaSj3nkvw7mcGWMGa2l8drPHSfALc2aEboYxUV2i1dhSSlPU-2F-2Fg02vLGnPSxJzqQWmHh2YLEVK0Xl27dDV45Lrqu1DhoID0ZGoRoBGIsjXR0vNFxGX1JRpdFfsNSR7Gf6Ql83f8PkFsRL2xHxCYpjXlhTtr6lL9wyDE-2BWQp3amcnW1xxnyTAG5r-2Fm8Getgm1zeV-2FtFmTNlNNWWIZ-2BPbNNooIRZvBVHMrdhCJynKJ6uoWno9a3NFvGaNydh-2BQhdHkSVkLU7L0VormcR-2B9naizVeAeXMZfLyZkGWoqHnosB4xviBAVo5OIMzSfyMv66fXplNsJ-2Bb-2Fs-2F4NkpKhvHGZQ-2B9CMP-2BT-2FB4vi42jOG2dcW3YgpceAErdVAhuecbgA078SCHVPlmKL0jXSeIFtkVqkM-2F8XYtQ-2BGWDDL0lxIE-2FCKTkm_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgyFvjSxeiDUjWhiiev2Rt-2FK7y1cb1WV-2Fx-2BU09Ep8sL7M91De19ZNenrDFOIlZD7knfebqzC90t-2FU0BXCi6oZbaE7lLbZLR0-2FeAjqAfpieSVoEZCq-2FJ0HR8cmFNzW9Y-2FBbbU24XxJaeaUE-2BDaLIsMaSBTjxyMnuSjoYJWLJcwT4jbdJjNw5i6DdK4bBTDQZ9Zaw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuJR8Pbd\$\&amp;source=gmail\&amp;ust=1672441602014000\&amp;usg=AOvVaw1YaW6PM5dDMI4NZkWl-U8j\"></a><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF18McAaSj3nkvw7mcGWMGa2l8drPHSfALc2aEboYxUV2i1dhSSlPU-2F-2Fg02vLGnPSxJzqQWmHh2YLEVK0Xl27dDV45Lrqu1DhoID0ZGoRoBGIsjXR0vNFxGX1JRpdFfsNSR7Gf6Ql83f8PkFsRL2xHxCYpjXlhTtr6lL9wyDE-2BWQp3amcnW1xxnyTAG5r-2Fm8Getgm1zeV-2FtFmTNlNNWWIZ-2BPbNNooIRZvBVHMrdhCJynKJ6uoWno9a3NFvGaNydh-2BQhdHkSVkLU7L0VormcR-2B9naizVeAeXMZfLyZkGWoqHnosB4xviBAVo5OIMzSfyMv66fXplNsJ-2Bb-2Fs-2F4NkpKhvHGZQ-2B9CMP-2BT-2FB4vi42jOG2dcW3YgpceAErdVAhuecbgA078SCHVPlmKL0jXSeIFtkVqkM-2F8XYtQ-2BGWDDL0lxIE-2FCKTkm_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgyFvjSxeiDUjWhiiev2Rt-2FK7y1cb1WV-2Fx-2BU09Ep8sL7M91De19ZNenrDFOIlZD7knfebqzC90t-2FU0BXCi6oZbaE7lLbZLR0-2FeAjqAfpieSVoEZCq-2FJ0HR8cmFNzW9Y-2FBbbU24XxJaeaUE-2BDaLIsMaSBTjxyMnuSjoYJWLJcwT4jbdJjNw5i6DdK4bBTDQZ9Zaw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuJR8Pbd\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF18McAaSj3nkvw7mcGWMGa2l8drPHSfALc2aEboYxUV2i1dhSSlPU-2F-2Fg02vLGnPSxJzqQWmHh2YLEVK0Xl27dDV45Lrqu1DhoID0ZGoRoBGIsjXR0vNFxGX1JRpdFfsNSR7Gf6Ql83f8PkFsRL2xHxCYpjXlhTtr6lL9wyDE-2BWQp3amcnW1xxnyTAG5r-2Fm8Getgm1zeV-2FtFmTNlNNWWIZ-2BPbNNooIRZvBVHMrdhCJynKJ6uoWno9a3NFvGaNydh-2BQhdHkSVkLU7L0VormcR-2B9naizVeAeXMZfLyZkGWoqHnosB4xviBAVo5OIMzSfyMv66fXplNsJ-2Bb-2Fs-2F4NkpKhvHGZQ-2B9CMP-2BT-2FB4vi42jOG2dcW3YgpceAErdVAhuecbgA078SCHVPlmKL0jXSeIFtkVqkM-2F8XYtQ-2BGWDDL0lxIE-2FCKTkm_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgyFvjSxeiDUjWhiiev2Rt-2FK7y1cb1WV-2Fx-2BU09Ep8sL7M91De19ZNenrDFOIlZD7knfebqzC90t-2FU0BXCi6oZbaE7lLbZLR0-2FeAjqAfpieSVoEZCq-2FJ0HR8cmFNzW9Y-2FBbbU24XxJaeaUE-2BDaLIsMaSBTjxyMnuSjoYJWLJcwT4jbdJjNw5i6DdK4bBTDQZ9Zaw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuJR8Pbd\$\&amp;source=gmail\&amp;ust=1672441602014000\&amp;usg=AOvVaw1YaW6PM5dDMI4NZkWl-U8j\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" src=\"https://ci3.googleusercontent.com/proxy/9d6YciKUsIWXB7BqMxLsivWKja7FgEIzguaiEOV0aHt0QqabwPeEePGJELBGJ1YovQ3z0dmUkrclHTbWAkUSw-bUfnJqsjPqsoe88YGBsZEXavlUrsIPvE0H675_o1LiLl46kmE-nfc9Ke_xs7K8FFMCtglks-OV=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/4741f4d5-0fce-4b7d-8e9a-bda9047056f7.jpeg\" align=\"right\" alt=\"Capitol Care\" title=\"\" class=\"CToWUd\" data-bit=\"iit\"></a><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF18McAaSj3nkvw7mcGWMGa2l8drPHSfALc2aEboYxUV2i1dhSSlPU-2F-2Fg02vLGnPSxJzqQWmHh2YLEVK0Xl27dDV45Lrqu1DhoID0ZGoRoBGIsjXR0vNFxGX1JRpdFfsNSR7Gf6Ql83f8PkFsRL2xHxCYpjXlhTtr6lL9wyDE-2BWQp3amcnW1xxnyTAG5r-2Fm8Getgm1zeV-2FtFmTNlNNWWIZ-2BPbNNooIRZvBVHMrdhCJynKJ6uoWno9a3NFvGaNydh-2BQhdHkSVkLU7L0VormcR-2B9naizVeAeXMZfLyZkGWoqHnosB4xviBAVo5OIMzSfyMv66fXplNsJ-2Bb-2Fs-2F4NkpKhvHGZQ-2B9CMP-2BT-2FB4vi42jOG2dcW3YgpceAErdVAhuecbgA078SCHVPlmKL0jXSeIFtkVqkM-2F8XYtQ-2BGWDDL0lxIE-2FCKTkm_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgyFvjSxeiDUjWhiiev2Rt-2FK7y1cb1WV-2Fx-2BU09Ep8sL7M91De19ZNenrDFOIlZD7knfebqzC90t-2FU0BXCi6oZbaE7lLbZLR0-2FeAjqAfpieSVoEZCq-2FJ0HR8cmFNzW9Y-2FBbbU24XxJaeaUE-2BDaLIsMaSBTjxyMnuSjoYJWLJcwT4jbdJjNw5i6DdK4bBTDQZ9Zaw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuJR8Pbd\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF18McAaSj3nkvw7mcGWMGa2l8drPHSfALc2aEboYxUV2i1dhSSlPU-2F-2Fg02vLGnPSxJzqQWmHh2YLEVK0Xl27dDV45Lrqu1DhoID0ZGoRoBGIsjXR0vNFxGX1JRpdFfsNSR7Gf6Ql83f8PkFsRL2xHxCYpjXlhTtr6lL9wyDE-2BWQp3amcnW1xxnyTAG5r-2Fm8Getgm1zeV-2FtFmTNlNNWWIZ-2BPbNNooIRZvBVHMrdhCJynKJ6uoWno9a3NFvGaNydh-2BQhdHkSVkLU7L0VormcR-2B9naizVeAeXMZfLyZkGWoqHnosB4xviBAVo5OIMzSfyMv66fXplNsJ-2Bb-2Fs-2F4NkpKhvHGZQ-2B9CMP-2BT-2FB4vi42jOG2dcW3YgpceAErdVAhuecbgA078SCHVPlmKL0jXSeIFtkVqkM-2F8XYtQ-2BGWDDL0lxIE-2FCKTkm_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgyFvjSxeiDUjWhiiev2Rt-2FK7y1cb1WV-2Fx-2BU09Ep8sL7M91De19ZNenrDFOIlZD7knfebqzC90t-2FU0BXCi6oZbaE7lLbZLR0-2FeAjqAfpieSVoEZCq-2FJ0HR8cmFNzW9Y-2FBbbU24XxJaeaUE-2BDaLIsMaSBTjxyMnuSjoYJWLJcwT4jbdJjNw5i6DdK4bBTDQZ9Zaw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuJR8Pbd\$\&amp;source=gmail\&amp;ust=1672441602014000\&amp;usg=AOvVaw1YaW6PM5dDMI4NZkWl-U8j\"></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14N9SXSbtokI-2Fc4992-2BZg9IPsP8083oRUUcC-2BrdYsrWW6iIb3YbHTufJj8m9lQSMGLxalp-2FbwMoEX0hOySmHCplyg5oSRnqgUyOuCSRcGOERvQT-2FNRgamPVhxXrWhI96CcXANy-2BaZhxgJSUy54ihZsb5bUHUeHv1ci3-2B8CenwKKvkLlBDJ8KTWkQ06SS3ZEuY-2F6ZzIQ9u6OzRKQsM35iTA-2BtF8xb1eSYjhXJrTZPsMHcgh0mm-2Bu8RefkQ27vIaI1Cq7WN53EcXr2xuFFAR6HPdinw12Saqqy-2F8yolh-2B6QHRpEBPm1HaCqbN1IG0ZteMEJ0-2BFlRiEyCF1ILSMp67nDMQFU5bAlElcoxMx-2B6NsL1iXwRgvJMFNoPoCC2Hq4O9kJoG2QEr8dXZ8p4J2kI2N6VIn5fhiL-2Fx-2F-2F1SjRcjMX82VnSSNxCwsDvQRLF70l4WPOw-3D-3DXR5k_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg6Q-2BVrigbMjWSNNM-2BtbI7MgcDd3g0XSoN6umVLY6YsjWyK2V-2FijLaHvOldZZTvXBMWpZoeAsKvbE5d-2Ft-2Bwkmim4H2Lbed-2Bksg3Pto9Ke6NS1KNlD5OASO5GdI1qN8RzCG5hWcXgxpCehapgZkeN5FtT50UAAr-2Blw51Y-2FzDN3xfqe9WmRO0rQUrE8RDL8rgfJzg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfi1lfLs9\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14N9SXSbtokI-2Fc4992-2BZg9IPsP8083oRUUcC-2BrdYsrWW6iIb3YbHTufJj8m9lQSMGLxalp-2FbwMoEX0hOySmHCplyg5oSRnqgUyOuCSRcGOERvQT-2FNRgamPVhxXrWhI96CcXANy-2BaZhxgJSUy54ihZsb5bUHUeHv1ci3-2B8CenwKKvkLlBDJ8KTWkQ06SS3ZEuY-2F6ZzIQ9u6OzRKQsM35iTA-2BtF8xb1eSYjhXJrTZPsMHcgh0mm-2Bu8RefkQ27vIaI1Cq7WN53EcXr2xuFFAR6HPdinw12Saqqy-2F8yolh-2B6QHRpEBPm1HaCqbN1IG0ZteMEJ0-2BFlRiEyCF1ILSMp67nDMQFU5bAlElcoxMx-2B6NsL1iXwRgvJMFNoPoCC2Hq4O9kJoG2QEr8dXZ8p4J2kI2N6VIn5fhiL-2Fx-2F-2F1SjRcjMX82VnSSNxCwsDvQRLF70l4WPOw-3D-3DXR5k_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg6Q-2BVrigbMjWSNNM-2BtbI7MgcDd3g0XSoN6umVLY6YsjWyK2V-2FijLaHvOldZZTvXBMWpZoeAsKvbE5d-2Ft-2Bwkmim4H2Lbed-2Bksg3Pto9Ke6NS1KNlD5OASO5GdI1qN8RzCG5hWcXgxpCehapgZkeN5FtT50UAAr-2Blw51Y-2FzDN3xfqe9WmRO0rQUrE8RDL8rgfJzg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfi1lfLs9\$\&amp;source=gmail\&amp;ust=1672441602014000\&amp;usg=AOvVaw18k7AtAD2sPnxsBCuIkDVP\"></a><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14N9SXSbtokI-2Fc4992-2BZg9IPsP8083oRUUcC-2BrdYsrWW6iIb3YbHTufJj8m9lQSMGLxalp-2FbwMoEX0hOySmHCplyg5oSRnqgUyOuCSRcGOERvQT-2FNRgamPVhxXrWhI96CcXANy-2BaZhxgJSUy54ihZsb5bUHUeHv1ci3-2B8CenwKKvkLlBDJ8KTWkQ06SS3ZEuY-2F6ZzIQ9u6OzRKQsM35iTA-2BtF8xb1eSYjhXJrTZPsMHcgh0mm-2Bu8RefkQ27vIaI1Cq7WN53EcXr2xuFFAR6HPdinw12Saqqy-2F8yolh-2B6QHRpEBPm1HaCqbN1IG0ZteMEJ0-2BFlRiEyCF1ILSMp67nDMQFU5bAlElcoxMx-2B6NsL1iXwRgvJMFNoPoCC2Hq4O9kJoG2QEr8dXZ8p4J2kI2N6VIn5fhiL-2Fx-2F-2F1SjRcjMX82VnSSNxCwsDvQRLF70l4WPOw-3D-3DXR5k_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg6Q-2BVrigbMjWSNNM-2BtbI7MgcDd3g0XSoN6umVLY6YsjWyK2V-2FijLaHvOldZZTvXBMWpZoeAsKvbE5d-2Ft-2Bwkmim4H2Lbed-2Bksg3Pto9Ke6NS1KNlD5OASO5GdI1qN8RzCG5hWcXgxpCehapgZkeN5FtT50UAAr-2Blw51Y-2FzDN3xfqe9WmRO0rQUrE8RDL8rgfJzg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfi1lfLs9\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14N9SXSbtokI-2Fc4992-2BZg9IPsP8083oRUUcC-2BrdYsrWW6iIb3YbHTufJj8m9lQSMGLxalp-2FbwMoEX0hOySmHCplyg5oSRnqgUyOuCSRcGOERvQT-2FNRgamPVhxXrWhI96CcXANy-2BaZhxgJSUy54ihZsb5bUHUeHv1ci3-2B8CenwKKvkLlBDJ8KTWkQ06SS3ZEuY-2F6ZzIQ9u6OzRKQsM35iTA-2BtF8xb1eSYjhXJrTZPsMHcgh0mm-2Bu8RefkQ27vIaI1Cq7WN53EcXr2xuFFAR6HPdinw12Saqqy-2F8yolh-2B6QHRpEBPm1HaCqbN1IG0ZteMEJ0-2BFlRiEyCF1ILSMp67nDMQFU5bAlElcoxMx-2B6NsL1iXwRgvJMFNoPoCC2Hq4O9kJoG2QEr8dXZ8p4J2kI2N6VIn5fhiL-2Fx-2F-2F1SjRcjMX82VnSSNxCwsDvQRLF70l4WPOw-3D-3DXR5k_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg6Q-2BVrigbMjWSNNM-2BtbI7MgcDd3g0XSoN6umVLY6YsjWyK2V-2FijLaHvOldZZTvXBMWpZoeAsKvbE5d-2Ft-2Bwkmim4H2Lbed-2Bksg3Pto9Ke6NS1KNlD5OASO5GdI1qN8RzCG5hWcXgxpCehapgZkeN5FtT50UAAr-2Blw51Y-2FzDN3xfqe9WmRO0rQUrE8RDL8rgfJzg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfi1lfLs9\$\&amp;source=gmail\&amp;ust=1672441602014000\&amp;usg=AOvVaw18k7AtAD2sPnxsBCuIkDVP\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" src=\"https://ci5.googleusercontent.com/proxy/iF2IpDGwOFo9DTuMH8RKoOc2gFrKDk3MSdM6gpkrI1qjoBnJ91XVizRktB--qt11MV6AxoH8BmBHyenrvnJ1KaPlDwKIqw5-t3vTN2b7xmdFTXQV8_ve6p3CfJKELGgb82H4nKDjYBspMsUXMjcfwIu6_eI6PpsZ=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/b4d92475-60de-431a-816e-d62ab5217af1.jpeg\" align=\"left\" alt=\"Installation Services\" title=\"\" class=\"CToWUd\" data-bit=\"iit\"></a><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14N9SXSbtokI-2Fc4992-2BZg9IPsP8083oRUUcC-2BrdYsrWW6iIb3YbHTufJj8m9lQSMGLxalp-2FbwMoEX0hOySmHCplyg5oSRnqgUyOuCSRcGOERvQT-2FNRgamPVhxXrWhI96CcXANy-2BaZhxgJSUy54ihZsb5bUHUeHv1ci3-2B8CenwKKvkLlBDJ8KTWkQ06SS3ZEuY-2F6ZzIQ9u6OzRKQsM35iTA-2BtF8xb1eSYjhXJrTZPsMHcgh0mm-2Bu8RefkQ27vIaI1Cq7WN53EcXr2xuFFAR6HPdinw12Saqqy-2F8yolh-2B6QHRpEBPm1HaCqbN1IG0ZteMEJ0-2BFlRiEyCF1ILSMp67nDMQFU5bAlElcoxMx-2B6NsL1iXwRgvJMFNoPoCC2Hq4O9kJoG2QEr8dXZ8p4J2kI2N6VIn5fhiL-2Fx-2F-2F1SjRcjMX82VnSSNxCwsDvQRLF70l4WPOw-3D-3DXR5k_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg6Q-2BVrigbMjWSNNM-2BtbI7MgcDd3g0XSoN6umVLY6YsjWyK2V-2FijLaHvOldZZTvXBMWpZoeAsKvbE5d-2Ft-2Bwkmim4H2Lbed-2Bksg3Pto9Ke6NS1KNlD5OASO5GdI1qN8RzCG5hWcXgxpCehapgZkeN5FtT50UAAr-2Blw51Y-2FzDN3xfqe9WmRO0rQUrE8RDL8rgfJzg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfi1lfLs9\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14N9SXSbtokI-2Fc4992-2BZg9IPsP8083oRUUcC-2BrdYsrWW6iIb3YbHTufJj8m9lQSMGLxalp-2FbwMoEX0hOySmHCplyg5oSRnqgUyOuCSRcGOERvQT-2FNRgamPVhxXrWhI96CcXANy-2BaZhxgJSUy54ihZsb5bUHUeHv1ci3-2B8CenwKKvkLlBDJ8KTWkQ06SS3ZEuY-2F6ZzIQ9u6OzRKQsM35iTA-2BtF8xb1eSYjhXJrTZPsMHcgh0mm-2Bu8RefkQ27vIaI1Cq7WN53EcXr2xuFFAR6HPdinw12Saqqy-2F8yolh-2B6QHRpEBPm1HaCqbN1IG0ZteMEJ0-2BFlRiEyCF1ILSMp67nDMQFU5bAlElcoxMx-2B6NsL1iXwRgvJMFNoPoCC2Hq4O9kJoG2QEr8dXZ8p4J2kI2N6VIn5fhiL-2Fx-2F-2F1SjRcjMX82VnSSNxCwsDvQRLF70l4WPOw-3D-3DXR5k_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg6Q-2BVrigbMjWSNNM-2BtbI7MgcDd3g0XSoN6umVLY6YsjWyK2V-2FijLaHvOldZZTvXBMWpZoeAsKvbE5d-2Ft-2Bwkmim4H2Lbed-2Bksg3Pto9Ke6NS1KNlD5OASO5GdI1qN8RzCG5hWcXgxpCehapgZkeN5FtT50UAAr-2Blw51Y-2FzDN3xfqe9WmRO0rQUrE8RDL8rgfJzg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfi1lfLs9\$\&amp;source=gmail\&amp;ust=1672441602015000\&amp;usg=AOvVaw0cMQJSFwfGpMxa9EdbvvNX\"></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 6.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<thead>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:3.0pt 0in 3.0pt 0in\"></td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:3.0pt 0in 3.0pt 0in\"></td>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4tZy-2FVsJ7JW77YcdJ29tZ6JqMzxjNEa9VfcoCDFQzwBYUaDk-2F8TEIgrTff-2BkJBcC3ZEXteVQMwsIHARn4AIJ-2Ba5cvOZsvBU69EZEjcsiTgLQDJbEYnqPAlT8AQh6CTqCATetloT8dXs1JADLB-2BrBtV4lY4LouD4baBhri8alXtJ8-2BoocSuL6Azw08Zsg-2B43wTk3VVjBw4uquP1IB3O-2BrFb4h4LCf9j7GVKkzMimOSFiyWYWFiavX5-2FDDXcSnaf6UUk4C39Cxxg3LJMrsRARm-2B72H6B8AX0I9grO53YEgLQc0kzkhmnMFy8K868Zf7NKNGgIOuw59vnoPU46CKQE-2BCou2kRNHRGa8PFzgoN1-2BEq5nWgof4u8dnQ5BcHkG5aIhW-2F5jEojKT6M0zaFxKOcO6NuBGhZX0Qynmn-2F406lQOmGWw-3D-3D5Ngc_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwAi20v4b6w9lDWn3AfOqOzPWuVPDpg0aUNzyoSG62d4t1swS2yrkFLWBvwIm4bGOm6GaphFPIt2q6ruLruntz1ns2TfUssj7b3dhLNd6BHlRH1WsZj43jhlC6DsGGLuwh8GP8r3Hqpt6y5fuhAHkDUvJz02SJldzmQLY5vF9vnoYKTLhn7lC4W6FjdxruOtwg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfiEGV6wg\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4tZy-2FVsJ7JW77YcdJ29tZ6JqMzxjNEa9VfcoCDFQzwBYUaDk-2F8TEIgrTff-2BkJBcC3ZEXteVQMwsIHARn4AIJ-2Ba5cvOZsvBU69EZEjcsiTgLQDJbEYnqPAlT8AQh6CTqCATetloT8dXs1JADLB-2BrBtV4lY4LouD4baBhri8alXtJ8-2BoocSuL6Azw08Zsg-2B43wTk3VVjBw4uquP1IB3O-2BrFb4h4LCf9j7GVKkzMimOSFiyWYWFiavX5-2FDDXcSnaf6UUk4C39Cxxg3LJMrsRARm-2B72H6B8AX0I9grO53YEgLQc0kzkhmnMFy8K868Zf7NKNGgIOuw59vnoPU46CKQE-2BCou2kRNHRGa8PFzgoN1-2BEq5nWgof4u8dnQ5BcHkG5aIhW-2F5jEojKT6M0zaFxKOcO6NuBGhZX0Qynmn-2F406lQOmGWw-3D-3D5Ngc_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwAi20v4b6w9lDWn3AfOqOzPWuVPDpg0aUNzyoSG62d4t1swS2yrkFLWBvwIm4bGOm6GaphFPIt2q6ruLruntz1ns2TfUssj7b3dhLNd6BHlRH1WsZj43jhlC6DsGGLuwh8GP8r3Hqpt6y5fuhAHkDUvJz02SJldzmQLY5vF9vnoYKTLhn7lC4W6FjdxruOtwg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfiEGV6wg\$\&amp;source=gmail\&amp;ust=1672441602015000\&amp;usg=AOvVaw0n-WDE_NJr4Ir6hgFHy-dc\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1037\" src=\"https://ci6.googleusercontent.com/proxy/8HV4yPGnU4qfmha7bW0f3n2hm-V0GdMT_jb_P6-WfBb3QGjTQJ-zYlxy98FxsFPdX7SSTLjGJPJuV-6RVsdnGGTVSPJrH-sLoD0RJi2sDIwLORWuZl6yNJ4nED_2NcjovDnQsJL5tm39jbhhBpGsy_sn6DIyuu6D=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/a57c588c-5ba8-4ebb-afa8-2dff5ca9d4d6.jpeg\" alt=\"Ceiling Lights\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4u77k0esrDQimUTK5G1ysruKzP1mqvx1W5ASUliyD1qvFT6CX9KASXMsIYLp-2BafzR4m0VC53kyQupWiByNCpbomk-2BhWv5eDIi1W8kesLDcmLmydouvwePb004K-2BDobZdxOPFO7Volo4LnrNiuJ4DX6mjU5sR021s1NgSb8m4po1zEGqv1QgTA3AGNFM1H-2BwqZO1pzOLNwdZ0RCGYJQ7kE3-2FxZ9x6c-2BxZUfVGwr2xqAFG6qvQygZsByno9xcblm-2FQLO6UO0q42xY6ZdcFMflTTKQCd-2BXLvY25IR1KzlFRyrgbo8hbwIaBfC4BoZpoy7chPFksw3Mehl7ZYbZFhCURiEaUryArxZ1tgIiId1RBpoItKtTCfde0fPqE-2B7OhE3cmoiRUAWUMc06MqHTnDfQPhiAAAdNyJwGQZQ29t-2BYuaQAuQ-3D-3Dy-LF_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg0Zp5ATx8e0PTOHlylUdxhIL50OvpW8CNcA3rIc3YX4jnE4HiJDcpG3rAhu7qwRAuaT8dIQhCV-2BSCLMsIyt2bMzL8dLr51sacQOnpWr5xMaiLyYeOCzCxvFG4WoCm6F605JI6dEwGJf6BofRuaQHMCvFV4YpnPLqYitSP2m0ayKcOj-2BiDZapqt0oOKp15lwDVg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfvREMe96\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4u77k0esrDQimUTK5G1ysruKzP1mqvx1W5ASUliyD1qvFT6CX9KASXMsIYLp-2BafzR4m0VC53kyQupWiByNCpbomk-2BhWv5eDIi1W8kesLDcmLmydouvwePb004K-2BDobZdxOPFO7Volo4LnrNiuJ4DX6mjU5sR021s1NgSb8m4po1zEGqv1QgTA3AGNFM1H-2BwqZO1pzOLNwdZ0RCGYJQ7kE3-2FxZ9x6c-2BxZUfVGwr2xqAFG6qvQygZsByno9xcblm-2FQLO6UO0q42xY6ZdcFMflTTKQCd-2BXLvY25IR1KzlFRyrgbo8hbwIaBfC4BoZpoy7chPFksw3Mehl7ZYbZFhCURiEaUryArxZ1tgIiId1RBpoItKtTCfde0fPqE-2B7OhE3cmoiRUAWUMc06MqHTnDfQPhiAAAdNyJwGQZQ29t-2BYuaQAuQ-3D-3Dy-LF_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg0Zp5ATx8e0PTOHlylUdxhIL50OvpW8CNcA3rIc3YX4jnE4HiJDcpG3rAhu7qwRAuaT8dIQhCV-2BSCLMsIyt2bMzL8dLr51sacQOnpWr5xMaiLyYeOCzCxvFG4WoCm6F605JI6dEwGJf6BofRuaQHMCvFV4YpnPLqYitSP2m0ayKcOj-2BiDZapqt0oOKp15lwDVg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfvREMe96\$\&amp;source=gmail\&amp;ust=1672441602015000\&amp;usg=AOvVaw3ciUavjNgkPJT1i8xCm5LN\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1036\" src=\"https://ci5.googleusercontent.com/proxy/TpPwKDdtSAv1F5_CaRwzu-RyiPGrULGmE-keyTfXLAVL04ZVDKz5o9kiW-L2G5cwprIwd7UdGgWOxgNgeXW0uR1xg8vkJdX0OhfYz4x-QqacPqlDVHl2gwe5NGUggtOpheP_zPhJlr8Z8cQ5CJp32Zu96OeAmU2G=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/75660363-2e4e-4b3b-aa0c-cb0d98cfeaa5.jpeg\" alt=\"Outdoor Lights\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4saDFgbuh8stW3AP1bdLqB78hHet6j8qsoJ9incNGG88sEvZDBPfMYEmntiZdTyIVTmhQgiJhmpO6pxlqK0f-2F-2BpKkZgu7aXJkLC6bZyzbCsEVGshbEubAOzy3HMy7I0GjbGecJsP286UaUAfQ50eQ6ly-2BX7WeMbb1EMUf82pXIOWQxMBI8PtTd1QhQFGkp3AUfK8V1OqrFeUJhTULiMKqmdWx4pEI-2FQKS0a1JJu9Enm4dumloE-2FdAc9bCZrOtjCrdnOemsSJPbxwH9Pz2v7kBOlUzYjDIQQ-2B-2BFsJYXXFg85o-2B9m3RLk-2B-2FnctWKF3-2F4z9yhIlf3o5f6rJFy2Kaq2EfXI5-2BoRtHJj-2BKqLHmSwdQgSTMNurO3d8zEOUR01J8LrzHr33WJamvud7s-2Bv2D4niqpM6ImBox7Qkys8jeFQzoAIUQ-3D-3D51Nr_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwWBLwshIIOuJwB-2Frk7wYdk5SIzn5k-2BjWOMSkpl9etKn7d1eynr9zQoRfbc6u-2BnMnL5GSxkV1z-2Bh-2F0UbZ61ixgKDt6jc70l4HI6Jrq3l90SqdN7YWxrYv4dQCxbETWwPM43cXRgjAueNQEc0UDHSJfSJg477emeXgnWe-2B1Bnt-2FtIBg6bGKjo2zWqNRjcfEpB8A-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfnFCbOr-\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4saDFgbuh8stW3AP1bdLqB78hHet6j8qsoJ9incNGG88sEvZDBPfMYEmntiZdTyIVTmhQgiJhmpO6pxlqK0f-2F-2BpKkZgu7aXJkLC6bZyzbCsEVGshbEubAOzy3HMy7I0GjbGecJsP286UaUAfQ50eQ6ly-2BX7WeMbb1EMUf82pXIOWQxMBI8PtTd1QhQFGkp3AUfK8V1OqrFeUJhTULiMKqmdWx4pEI-2FQKS0a1JJu9Enm4dumloE-2FdAc9bCZrOtjCrdnOemsSJPbxwH9Pz2v7kBOlUzYjDIQQ-2B-2BFsJYXXFg85o-2B9m3RLk-2B-2FnctWKF3-2F4z9yhIlf3o5f6rJFy2Kaq2EfXI5-2BoRtHJj-2BKqLHmSwdQgSTMNurO3d8zEOUR01J8LrzHr33WJamvud7s-2Bv2D4niqpM6ImBox7Qkys8jeFQzoAIUQ-3D-3D51Nr_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwWBLwshIIOuJwB-2Frk7wYdk5SIzn5k-2BjWOMSkpl9etKn7d1eynr9zQoRfbc6u-2BnMnL5GSxkV1z-2Bh-2F0UbZ61ixgKDt6jc70l4HI6Jrq3l90SqdN7YWxrYv4dQCxbETWwPM43cXRgjAueNQEc0UDHSJfSJg477emeXgnWe-2B1Bnt-2FtIBg6bGKjo2zWqNRjcfEpB8A-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfnFCbOr-\$\&amp;source=gmail\&amp;ust=1672441602015000\&amp;usg=AOvVaw3NPF-88mebQXQcUA935oZz\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1035\" src=\"https://ci3.googleusercontent.com/proxy/xlTtLrW0p7Rqj9xQ0ilfpyj3HUd6IgFLtbedcgJ4KkfWeBhTYB_GZh4rwaMEl9I-MrVwmmWNIerPXcZSRhBksPZ80LF3pxpOg7nXJcQZ-sYccd0I4B6cXSJMBBsn10uCXerjvw5kOIm8zQVTyhiA-USQzqXBC6io=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/37fc066a-3d5e-4366-93d1-f88745fde48f.jpeg\" alt=\"Bath \&amp; Wall Lights\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4to41ZbBfqeexMp2zn-2BYPF-2Fm7YYBurW9-2FhMl0IZLZte9V1p40rPeVWsr4NCdrDRIlCHcQPARo0imydzQREQH3YRwOAGZoFefrilEkDk08JxUpV9xIiGp3wAVWyk4owWZjGuOySU0jDs-2BBjhRa-2BZNO4x6UIS9wqiJeyHNhi0nwC9xG39Y0wr0QM7Vo7XJ7BIpw17uoruRkRJWcBFLLgLnQKMQkWd6dQfCQKiw0bBguSpJVH6WzFl92UdNhWyjBHNCG6lVpNpuFPSjEUFoAh5Ui3FjkfXQ8MQTOD-2BTRTkNxTaJ2aoZegAVetGN8fKGao-2BtCdmHjMgh-2F-2FTMvtHCul5iUF1OUsJ-2FT9SQMHIwAbWumnqc6wiNJLi52TJU5KiBH8cyrc-3DsMzk_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg0w-2FNj67mLdjk7vpo97-2FjpiD5OwXEzj2YhrKbiR1urpslCtxLNrbMHtBZSOAdJOuXtWFlYCJYi9YR2KrFhp7-2BOvxbdaVtI4XjxNCpN2qa6IvSvg8RF8amC330wKJvzWWZ4sz9qOMhv5w7-2BcSKuhPLwpL48AJDMRJ8VDB1d1DY1DJZZDqgR7sh2prO870xFi18w-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfp5j2bLQ\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4to41ZbBfqeexMp2zn-2BYPF-2Fm7YYBurW9-2FhMl0IZLZte9V1p40rPeVWsr4NCdrDRIlCHcQPARo0imydzQREQH3YRwOAGZoFefrilEkDk08JxUpV9xIiGp3wAVWyk4owWZjGuOySU0jDs-2BBjhRa-2BZNO4x6UIS9wqiJeyHNhi0nwC9xG39Y0wr0QM7Vo7XJ7BIpw17uoruRkRJWcBFLLgLnQKMQkWd6dQfCQKiw0bBguSpJVH6WzFl92UdNhWyjBHNCG6lVpNpuFPSjEUFoAh5Ui3FjkfXQ8MQTOD-2BTRTkNxTaJ2aoZegAVetGN8fKGao-2BtCdmHjMgh-2F-2FTMvtHCul5iUF1OUsJ-2FT9SQMHIwAbWumnqc6wiNJLi52TJU5KiBH8cyrc-3DsMzk_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg0w-2FNj67mLdjk7vpo97-2FjpiD5OwXEzj2YhrKbiR1urpslCtxLNrbMHtBZSOAdJOuXtWFlYCJYi9YR2KrFhp7-2BOvxbdaVtI4XjxNCpN2qa6IvSvg8RF8amC330wKJvzWWZ4sz9qOMhv5w7-2BcSKuhPLwpL48AJDMRJ8VDB1d1DY1DJZZDqgR7sh2prO870xFi18w-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfp5j2bLQ\$\&amp;source=gmail\&amp;ust=1672441602015000\&amp;usg=AOvVaw3_Er9SoY22BlGSNBbFU4yg\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1034\" src=\"https://ci3.googleusercontent.com/proxy/bmeu1aac2YbrCtrMirKxt-cZpKEB-ohhGDuS2Dc9OazhCC-ddVTu4MkWQN5Lv9Obc4clqRYCgiWdr4ke3yMKW0cQ_6xEw6GGJye4DtDjGwqEjThEJdEYH1CBiPjjVuYHYNSzJaDyipGFDmLRvZj5s2xYe8I_slwA=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/93c86e92-9910-45b1-9eb7-603287e1a7e1.jpeg\" alt=\"Lamps\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4ujABHM9w5CSYRA6FmCKFb0D7pRu2cO8YppeBI5O7s7RtV7koXpr1Ns4KHWPxQFdbEosg46EMALcuCnPLch9vRxsIdgjfBBCA8B4Hmwe9WSJuXxVtlvqRGDZ-2BNL65O4gonomujcu3-2B5KIBJVkvUc8LCqavBb3TiFv-2BCrNrkezvk1DJTXcnz-2B04plP-2B8OrVp3RMImaeeI7mQfku-2BiKdYP-2FJBcuJfDAmAzKYDY-2BnqneicAtE1ZyLmxDDax1H3fZXAyU2Sb9coLQgY1GT00mfZCaX9Oo1p-2BT9E0qC1aNDUCQ4vy7P5WLHWzrxtdb7ep1YRwWL3diLSmAFvf4c2xuRLfwcb2to-2FQeCU0d0QAJRlm8c2hp3Xk5to2K5HcWZ1UydPuEA-3DyLmf_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg2wkEt2-2FQBJ3nXzi-2BBlZx-2F9U-2BfyVSqy6Q52F2zmKqb8rhiXx-2BTEftGOnulNpLWTTht9emsZ9eJvQFJOnAfAOaP5Z9HgDvhmS1agR92fFmdgUz5ysUsWV0JTeB84xC5AVn377cnfLxaL8Iq9pe2PzhERkRIN2IueRblPWpHz3ovxJQ0A-2F09oVRHOKD5mJGMKVHg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlft8du0Tm\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4ujABHM9w5CSYRA6FmCKFb0D7pRu2cO8YppeBI5O7s7RtV7koXpr1Ns4KHWPxQFdbEosg46EMALcuCnPLch9vRxsIdgjfBBCA8B4Hmwe9WSJuXxVtlvqRGDZ-2BNL65O4gonomujcu3-2B5KIBJVkvUc8LCqavBb3TiFv-2BCrNrkezvk1DJTXcnz-2B04plP-2B8OrVp3RMImaeeI7mQfku-2BiKdYP-2FJBcuJfDAmAzKYDY-2BnqneicAtE1ZyLmxDDax1H3fZXAyU2Sb9coLQgY1GT00mfZCaX9Oo1p-2BT9E0qC1aNDUCQ4vy7P5WLHWzrxtdb7ep1YRwWL3diLSmAFvf4c2xuRLfwcb2to-2FQeCU0d0QAJRlm8c2hp3Xk5to2K5HcWZ1UydPuEA-3DyLmf_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg2wkEt2-2FQBJ3nXzi-2BBlZx-2F9U-2BfyVSqy6Q52F2zmKqb8rhiXx-2BTEftGOnulNpLWTTht9emsZ9eJvQFJOnAfAOaP5Z9HgDvhmS1agR92fFmdgUz5ysUsWV0JTeB84xC5AVn377cnfLxaL8Iq9pe2PzhERkRIN2IueRblPWpHz3ovxJQ0A-2F09oVRHOKD5mJGMKVHg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlft8du0Tm\$\&amp;source=gmail\&amp;ust=1672441602015000\&amp;usg=AOvVaw1f9Pk-OlJuTPl6Q0ibg2Xf\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1033\" src=\"https://ci6.googleusercontent.com/proxy/KA4Sb91AlJ5n9l79RHRXC_PD9geqosB4fmvvfgvfsrHbI4RR8Nk1Vi-M3LX7TJe6l8QZnSqDVg2o85edQsAIrJshfQ3hDNJ3FvH04bVaoD7MCCcbzcePEJLkK1WWi5Ea0ULwitttg7h9FmMAIH_Q0lYwlPuZgrl1=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/3b6e234c-5df5-41f3-95ed-acfb84fc8dbf.jpeg\" alt=\"Fans\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4sfn37vLeXf8QM3WsAv8OpIP6IX5mqYvmV8XKi-2FfeZ0q45XaGbLj8bTpASC3SSrKACynY4vnhGX3tWWWk8yrkwNUY8sH3dR9pidz-2FsiWyW9UKoMhw92Pz9APmyqXDJzt9rYauYwS1mT3jZqbVcQy9XBMsQoh7Y8cXFygVg-2BkkRAo64pzJSFd3ofR0kszDcG61Wifl7cDzQSSipFOL6E6YHel8XldCwNBIlv7cqt0SRG7Jw1SiM33aTIH1UACYivHv3eQJeFFmWYrQGCipAfMI1jqaOHa39-2BiBDyDVeZb6icrk2pIMdBSIntJS4mqzrkcSYpXHimAa6OhMM7xUsYN9zyMwXrS4oHZctJgB-2Fu8N4WGrImtc3E6eIKJU-2Fcmn6WJpaQWG193AkZiMHg7DT-2BG52TxiAZ_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwz65dTpc4ubtbLhtSJfmRs4is1pki-2BWCLhRmJCWCcOt00OvdTTGamoPjb-2Bcc9mr-2Fw6vaYzY2ijZeW-2F27aJtCwJi7BB60fvV-2Byi75Fz7c3TjaBL3Waan70IfmDcS8rW-2B9OsmaUtKqzBMp2YtbLeCVGKVGeI6e-2F4GosOfRE1Yusr7YKFUujXTs5jtiSIbbTMK0A-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfs2IrgrA\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4sfn37vLeXf8QM3WsAv8OpIP6IX5mqYvmV8XKi-2FfeZ0q45XaGbLj8bTpASC3SSrKACynY4vnhGX3tWWWk8yrkwNUY8sH3dR9pidz-2FsiWyW9UKoMhw92Pz9APmyqXDJzt9rYauYwS1mT3jZqbVcQy9XBMsQoh7Y8cXFygVg-2BkkRAo64pzJSFd3ofR0kszDcG61Wifl7cDzQSSipFOL6E6YHel8XldCwNBIlv7cqt0SRG7Jw1SiM33aTIH1UACYivHv3eQJeFFmWYrQGCipAfMI1jqaOHa39-2BiBDyDVeZb6icrk2pIMdBSIntJS4mqzrkcSYpXHimAa6OhMM7xUsYN9zyMwXrS4oHZctJgB-2Fu8N4WGrImtc3E6eIKJU-2Fcmn6WJpaQWG193AkZiMHg7DT-2BG52TxiAZ_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlgwz65dTpc4ubtbLhtSJfmRs4is1pki-2BWCLhRmJCWCcOt00OvdTTGamoPjb-2Bcc9mr-2Fw6vaYzY2ijZeW-2F27aJtCwJi7BB60fvV-2Byi75Fz7c3TjaBL3Waan70IfmDcS8rW-2B9OsmaUtKqzBMp2YtbLeCVGKVGeI6e-2F4GosOfRE1Yusr7YKFUujXTs5jtiSIbbTMK0A-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfs2IrgrA\$\&amp;source=gmail\&amp;ust=1672441602016000\&amp;usg=AOvVaw17wf7HJwYMaJKTSpVShaSk\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1032\" src=\"https://ci6.googleusercontent.com/proxy/LSkWsfS66XNSev2ZxCmqTsed-mlif82UXwnd1beb2nzcUJRQNKo-y3Utu5pNbHON7aKo53jIk9pQ7_cO6dxs77cuUIEB-RFyEp0aGz6rMimJlZ1GLEHsQc66taMJovloIfQV_nOwYbnXxtxKG5WWbQBmTlZAmUWy=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/994691b3-4b79-4008-aa9a-dfd28e5ceaf7.jpeg\" alt=\"Decor\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4t7VTpvr8PdJkeObucStfKrHeoGG8BQQ6pVyDmHY1IOpVXGq3dJ8pamJj45R76ZD9ORzzkfif-2F3kfcf32vSwyeVSL6drx5uHofPxbBGZp8g-2Bq-2Be8KiJfkPcRXpdfT13UbnP2rBL-2FcYSlVeTSqRJPHqv3WVSZ4RgLIRvdlT3sZY31e5uMSVibFZQpTXv460jqV7w0qooIiJ71kYegsmrddNGHU0aXp9V0sLrX0W3H8XNfeXRCSBqYWlGlRz-2Fg0-2BiXvv-2FWJo6uIV3yjHfvQJkZ6nI22tLz1GDnRmWfY708-2FIhjYqqjOg2SHCfLF6ACbJabILM9KEZXiTZMvAVEi-2FmLpIeXL-2FlAiq0z7-2BYJ2y-2FVsRUYBYAfNA2VMgquOvAqKQj4BZJgnatTyrGNbisjwSvZOGWl4Nn_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg51nb9easqjen9sensOV9wHkV-2BOdne-2Bg-2BXyLbhTcsW6I9lsn5bSw-2BaDIT6hY9ukswUDCNP7qLj2vjgifRoGlVfPF6DafT1a32V2gi8p-2BP0nOhMbUH4GfP1-2FLh9X8wOrFpRgBpLuOhB7pWGVkbuj3gXLbL5ODIxOFEgFDq2J1X-2Bz3F3hNcRnpAVx10bF0MkemAg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuM7UnYS\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4t7VTpvr8PdJkeObucStfKrHeoGG8BQQ6pVyDmHY1IOpVXGq3dJ8pamJj45R76ZD9ORzzkfif-2F3kfcf32vSwyeVSL6drx5uHofPxbBGZp8g-2Bq-2Be8KiJfkPcRXpdfT13UbnP2rBL-2FcYSlVeTSqRJPHqv3WVSZ4RgLIRvdlT3sZY31e5uMSVibFZQpTXv460jqV7w0qooIiJ71kYegsmrddNGHU0aXp9V0sLrX0W3H8XNfeXRCSBqYWlGlRz-2Fg0-2BiXvv-2FWJo6uIV3yjHfvQJkZ6nI22tLz1GDnRmWfY708-2FIhjYqqjOg2SHCfLF6ACbJabILM9KEZXiTZMvAVEi-2FmLpIeXL-2FlAiq0z7-2BYJ2y-2FVsRUYBYAfNA2VMgquOvAqKQj4BZJgnatTyrGNbisjwSvZOGWl4Nn_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg51nb9easqjen9sensOV9wHkV-2BOdne-2Bg-2BXyLbhTcsW6I9lsn5bSw-2BaDIT6hY9ukswUDCNP7qLj2vjgifRoGlVfPF6DafT1a32V2gi8p-2BP0nOhMbUH4GfP1-2FLh9X8wOrFpRgBpLuOhB7pWGVkbuj3gXLbL5ODIxOFEgFDq2J1X-2Bz3F3hNcRnpAVx10bF0MkemAg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfuM7UnYS\$\&amp;source=gmail\&amp;ust=1672441602016000\&amp;usg=AOvVaw0AdPNlEK7CTbJXxt9zrRHj\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1031\" src=\"https://ci3.googleusercontent.com/proxy/E_GVxI0YCiBqg8mDG434RCxj5Hlw5Szr7viYdYoVUe9hjgIKqqjo8JbeU8NMEI-Q9FwJJs9N6DzTrotKGN8PvhgG45RDZ8jL2zVAJ98KlVLM4OBZQxPVYcDQq5uyBKknkevFHpnS5ZFrndgpKA2Ghrba3TNBs9A5=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/57a5115a-78c7-4397-a444-c3380906f41d.jpeg\" alt=\"Furniture\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+<td width=\"50%\" valign=\"top\" style=\"width:50.0%;padding:0in 0in 3.75pt 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4tk9dEZfDSDcymp7-2F7S7p0tev-2FI-2F0ru4RisSRytxzZyk-2FV-2BCpE403YTbRsIn0hIhinuxwxGuucgNLm-2FSYPqGiiMRZf4sePkYcU2R4w3F89Tr5VQK-2B5EdCbC5vzvA36tBiH4cBcHPiC-2FM8gMZtv0CFxJ0fm7cAfX7In3TgJGE0LQ-2Fxj6241aXlj3-2BM4scMhRKA1xEBwP2AeHzWEUXgGDyjpKuYIF3G-2Bbf1lfrhlg35wstlE1-2BIPYgbKQUlw7czWrl4vdgYjHz58t9PB4djNnjgDk9rFnudg5u55-2FdbpZ2umA4AfNQ2sLDMyHD3W-2FxODEE3i8awF-2F4nFSKR6y7jC4tdARPRwFQXeM3fgliWgARtP4U81hItUchOBiCCPt08gRif-2BwaAocaUhuRnS6bn6s-2BVOXQnKK_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg2odKGRKKFpuhiz5ZbGR28fD0mHt1QcB9D-2B-2BbtShPgxh30Pc598-2B32TY5NEArkN3sg2VgV52AwHW6IEe4X850QmeK5c8Om-2FvNtwgHYHT8YJW8rlHZaRTptFeTO6PmRCquLYmCQL-2FHqZ9XaZHNA58vymnF7t4M3yQmNlgMT892BMfXAYC7ci-2FTpZ-2FtdB1Xcu6Dw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfnh1JC6E\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4tk9dEZfDSDcymp7-2F7S7p0tev-2FI-2F0ru4RisSRytxzZyk-2FV-2BCpE403YTbRsIn0hIhinuxwxGuucgNLm-2FSYPqGiiMRZf4sePkYcU2R4w3F89Tr5VQK-2B5EdCbC5vzvA36tBiH4cBcHPiC-2FM8gMZtv0CFxJ0fm7cAfX7In3TgJGE0LQ-2Fxj6241aXlj3-2BM4scMhRKA1xEBwP2AeHzWEUXgGDyjpKuYIF3G-2Bbf1lfrhlg35wstlE1-2BIPYgbKQUlw7czWrl4vdgYjHz58t9PB4djNnjgDk9rFnudg5u55-2FdbpZ2umA4AfNQ2sLDMyHD3W-2FxODEE3i8awF-2F4nFSKR6y7jC4tdARPRwFQXeM3fgliWgARtP4U81hItUchOBiCCPt08gRif-2BwaAocaUhuRnS6bn6s-2BVOXQnKK_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg2odKGRKKFpuhiz5ZbGR28fD0mHt1QcB9D-2B-2BbtShPgxh30Pc598-2B32TY5NEArkN3sg2VgV52AwHW6IEe4X850QmeK5c8Om-2FvNtwgHYHT8YJW8rlHZaRTptFeTO6PmRCquLYmCQL-2FHqZ9XaZHNA58vymnF7t4M3yQmNlgMT892BMfXAYC7ci-2FTpZ-2FtdB1Xcu6Dw-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfnh1JC6E\$\&amp;source=gmail\&amp;ust=1672441602016000\&amp;usg=AOvVaw3Eq_7Xr_Nzc23X5T3nsRqT\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:#b88c1d\"><img border=\"0\" width=\"300\" style=\"width:3.125in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1030\" src=\"https://ci3.googleusercontent.com/proxy/QPhLZfq7MoTkMHsVRs-2wE9p3GNIa6WL8zfZSWLvBz_rO_MOOeDK78EEOdjF_hPQGCDaYVno8-D8voHkE1L6ZBVC8Thh-HXYye8ly9wS-ye4OBAy-4HVhw8LuYIgfvTNoTM0t3ACObVWnuYseviZMMlXwfK4kDIu=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/61315a34-f599-4886-86be-3e45acc7bae8.jpeg\" alt=\"Sale\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;border-radius:5px\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 22.5pt 0in 22.5pt\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse;display:inline-block;max-width:100%\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\"></td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+<td style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border-radius:5px\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;max-width:100%\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF17QuS0GzRQ-2FKZCH1PCRy1rC8StgDF0n56RV3uS1YaHXqpeDkCOmABUTSCN6A15-2Bhq4nmjS-2FKkNfGxjfCK-2FW9ro4RK8ZTdNr5orQFYY1kfFLY1gRvnbKeLmkN9V8NCVzM-2FCyze7erSnGRxvMPcwQ00kQOgpbVTs3azGiptIAV6gl6iPni-2BFtGcWTzaMygUcF6M5XZTjhpj-2BGb2H42tSq7Js-2BO3dCKi-2BNU7xClNTlowESZXUMRlLEc7VLzSRJ-2FzrFWkJ-2FiAJT95WD4-2BLWkho3FaNuPVnuSX51MEvbhN515Zxz2tzncHtHDuNWLEUhvfx30U18PAJI8RPLJfzgi2yrNWSlYknB9jNOTKvDuHqpnq1yE09KqBC43qOBdYwH2NyovbAGLusNMG-2B4cF0hvPOKRTmOrqCrbbhVf9cl6VQ0qfI-2BPK13F_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg7ju8-2FDfw2g0VE8w49wNiaQ8g4buvRtNfcB9Cf2xuWvgoSwJlhFLK0p6m45fVTaV4R6zQ9scKVj3o9G7K0suiV257jPHdhjT7yBzdxTs5fvWhRs5bsdb-2ByBXZOU7kqyfIX66-2FqcS5s0OCfX4uy0-2BbEMpcb2YPkwQG5-2FJGiP2doN6fve8wtWz9JhK0EFQ30zYsA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfhQ746qn\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF17QuS0GzRQ-2FKZCH1PCRy1rC8StgDF0n56RV3uS1YaHXqpeDkCOmABUTSCN6A15-2Bhq4nmjS-2FKkNfGxjfCK-2FW9ro4RK8ZTdNr5orQFYY1kfFLY1gRvnbKeLmkN9V8NCVzM-2FCyze7erSnGRxvMPcwQ00kQOgpbVTs3azGiptIAV6gl6iPni-2BFtGcWTzaMygUcF6M5XZTjhpj-2BGb2H42tSq7Js-2BO3dCKi-2BNU7xClNTlowESZXUMRlLEc7VLzSRJ-2FzrFWkJ-2FiAJT95WD4-2BLWkho3FaNuPVnuSX51MEvbhN515Zxz2tzncHtHDuNWLEUhvfx30U18PAJI8RPLJfzgi2yrNWSlYknB9jNOTKvDuHqpnq1yE09KqBC43qOBdYwH2NyovbAGLusNMG-2B4cF0hvPOKRTmOrqCrbbhVf9cl6VQ0qfI-2BPK13F_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg7ju8-2FDfw2g0VE8w49wNiaQ8g4buvRtNfcB9Cf2xuWvgoSwJlhFLK0p6m45fVTaV4R6zQ9scKVj3o9G7K0suiV257jPHdhjT7yBzdxTs5fvWhRs5bsdb-2ByBXZOU7kqyfIX66-2FqcS5s0OCfX4uy0-2BbEMpcb2YPkwQG5-2FJGiP2doN6fve8wtWz9JhK0EFQ30zYsA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfhQ746qn\$\&amp;source=gmail\&amp;ust=1672441602016000\&amp;usg=AOvVaw0PuOR3EulnHGD-TQHf55yq\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:blue\"><img border=\"0\" width=\"75\" style=\"width:.7812in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1029\" src=\"https://ci4.googleusercontent.com/proxy/iPrdhkMBEJxgv9efiAxUZcfrleMgLQ4aqpP8U4GM3YnJsDI4xxFhfZZA8EDE39mrx7XFJUHxtK3QJ61tEO8nDR7ZLQQ4ttAfCB79HMdhjkn-ty1m40mJl0WShmZC11uVd9f3gVEtMhjG8hs_J9uSoX04swokyLSc=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/4ca1175f-e4ad-4db0-8c42-e088719ec062.jpeg\" alt=\"Instagram\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+<td style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border-radius:5px\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;max-width:100%\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF11Gxtz2bFaVLg7TKc3zTnJ2kB8JZiEU2e6onyEYCevdto9Mj6GC45T07PBNpdJWHVRiYIjIu61NVrm6fABZoOk4QLznJun23j8rwXOzalkE5HYGi6-2FEF0La-2FGnRxpE17ulevWi-2BnHrsTO2HT-2FjwJNhqsVmyo3Om-2FmZiuyDxHlXz3EVz2g4p3q-2F7VwUtj1-2FbN7PyACIY-2BQ91YaUVdqzqjJifRpkVayTMh8nhyFOWJJteZRjq-2FfF2LjlaX97OJBpwZbXlypaPo3h2d31ZIWArEDTtfE8az-2B1aFROEnSIxva5k-2FMKVM-2BVs3-2BWlnJbtgBqtrt3vRh-2BB1T-2BunXerF4JdVgQw1Jf4-2F0fGrfUnpH7RwWXnzxRz6VCgCRr7HaiEthONBrlMOirOQpS3KgTERkncamtwqnZ01gMIunXyVO8h9FU6jcCwT_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg1qVr84bLOOqiHM-2FjWoL-2FM9BC4d-2Bs-2B6i7h9ru-2BaAiZyXviV4OxLc5IXAzXd9uUIw69xTQwUoe4XT05ivWkI7AmqgVlNZxu5sCsKkJ-2FnaepF0KkQq6rxEpniNR54WyTn7rBnjCdTmZSjUawEW4jupMxGcTUHcCtoJu-2BLxmx1dzAMLnlSZ-2B5Up7bI8glJJteGZ4w-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfjmL65X6\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF11Gxtz2bFaVLg7TKc3zTnJ2kB8JZiEU2e6onyEYCevdto9Mj6GC45T07PBNpdJWHVRiYIjIu61NVrm6fABZoOk4QLznJun23j8rwXOzalkE5HYGi6-2FEF0La-2FGnRxpE17ulevWi-2BnHrsTO2HT-2FjwJNhqsVmyo3Om-2FmZiuyDxHlXz3EVz2g4p3q-2F7VwUtj1-2FbN7PyACIY-2BQ91YaUVdqzqjJifRpkVayTMh8nhyFOWJJteZRjq-2FfF2LjlaX97OJBpwZbXlypaPo3h2d31ZIWArEDTtfE8az-2B1aFROEnSIxva5k-2FMKVM-2BVs3-2BWlnJbtgBqtrt3vRh-2BB1T-2BunXerF4JdVgQw1Jf4-2F0fGrfUnpH7RwWXnzxRz6VCgCRr7HaiEthONBrlMOirOQpS3KgTERkncamtwqnZ01gMIunXyVO8h9FU6jcCwT_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg1qVr84bLOOqiHM-2FjWoL-2FM9BC4d-2Bs-2B6i7h9ru-2BaAiZyXviV4OxLc5IXAzXd9uUIw69xTQwUoe4XT05ivWkI7AmqgVlNZxu5sCsKkJ-2FnaepF0KkQq6rxEpniNR54WyTn7rBnjCdTmZSjUawEW4jupMxGcTUHcCtoJu-2BLxmx1dzAMLnlSZ-2B5Up7bI8glJJteGZ4w-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfjmL65X6\$\&amp;source=gmail\&amp;ust=1672441602016000\&amp;usg=AOvVaw1GcstCc1ytRiH5qeZSYDjK\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:blue\"><img border=\"0\" width=\"75\" style=\"width:.7812in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1028\" src=\"https://ci5.googleusercontent.com/proxy/6Sjky1yRmf-1o-G2KHhRSliWvvwS9MSHkUE8OHG7r9NNe0Ayd_0nzcT9TpZO4dMGh_MsboqZ3RQbjv3Z5NGZ5CdeY2a_s25hDPD9Px8XrPif7rGdg0kj9OLHOZN5LjVMLRl0tF5q6I3DkcNqx9bo-2LMmBTg9CAC=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/dafa2ab3-c761-4114-9841-50ecfd6ba914.jpeg\" alt=\"Facebook\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+<td style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border-radius:5px\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;max-width:100%\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14ndpoNSU2EcMEtJCZCiDdM6l80zI9-2Fy9-2B3sY6tt0Exrx5HIKHq4ShbLbfQhrLPuzNgv-2FCeg1CITcBYqJjo0zXPb4Ba-2BN-2FiTqa0NXLW3KZeihuwdE3XOUP-2BHh4r1FwABHMD7iohpWYh6UUaEZMqlRfT-2BQVOuLCYMVJ1Ktq-2BBizB-2BqBPGc-2Fx94hgzx-2F28TZAwS-2FKJ03ANOuLL8gz74oxjWJCmrEyQzNzn9y9C18IQ9Uce-2BqIsZ2A5cSpa0MfRuDqv37JIErAvjhfA4kODMmGfqzMICjHkOk8ozpFlSiRTY-2B8s-2BZJq6UzHbN1OEOjsFwlvgKxITeyDqt-2FFZvCDcwAfraEHS1cwcBKogXy2heVGUR8pqLsnWsmNkvzzPJVfMw-2BYoz0rkYFs-2BSxgIXGUEmAnuFkZCVlR-2B9t-2FnUCLLvCM58f4zl3Q_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg32MVnEo1fXAhk4xy5M0w-2Bbny6amM0jixgoRU2geN-2FcSZvdJ8TXkYtK4gkyDXmNJGGoHQ7VkKhdlksBAakUtimJYxO99HSOqgp8zYYIDVEreRfwP-2FkEC-2BjwGBoQAwdTyiqQKkykK-2FdSYYcZbZPtNMQrtsoW2Pl-2F5XcA-2FbMAPAeYW7Ot0v04qajPyxcaCZfvXgA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfpqVqlcI\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14ndpoNSU2EcMEtJCZCiDdM6l80zI9-2Fy9-2B3sY6tt0Exrx5HIKHq4ShbLbfQhrLPuzNgv-2FCeg1CITcBYqJjo0zXPb4Ba-2BN-2FiTqa0NXLW3KZeihuwdE3XOUP-2BHh4r1FwABHMD7iohpWYh6UUaEZMqlRfT-2BQVOuLCYMVJ1Ktq-2BBizB-2BqBPGc-2Fx94hgzx-2F28TZAwS-2FKJ03ANOuLL8gz74oxjWJCmrEyQzNzn9y9C18IQ9Uce-2BqIsZ2A5cSpa0MfRuDqv37JIErAvjhfA4kODMmGfqzMICjHkOk8ozpFlSiRTY-2B8s-2BZJq6UzHbN1OEOjsFwlvgKxITeyDqt-2FFZvCDcwAfraEHS1cwcBKogXy2heVGUR8pqLsnWsmNkvzzPJVfMw-2BYoz0rkYFs-2BSxgIXGUEmAnuFkZCVlR-2B9t-2FnUCLLvCM58f4zl3Q_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg32MVnEo1fXAhk4xy5M0w-2Bbny6amM0jixgoRU2geN-2FcSZvdJ8TXkYtK4gkyDXmNJGGoHQ7VkKhdlksBAakUtimJYxO99HSOqgp8zYYIDVEreRfwP-2FkEC-2BjwGBoQAwdTyiqQKkykK-2FdSYYcZbZPtNMQrtsoW2Pl-2F5XcA-2FbMAPAeYW7Ot0v04qajPyxcaCZfvXgA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfpqVqlcI\$\&amp;source=gmail\&amp;ust=1672441602017000\&amp;usg=AOvVaw2tmnKXQnSHRTbhXrg71ZOL\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:blue\"><img border=\"0\" width=\"75\" style=\"width:.7812in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1027\" src=\"https://ci5.googleusercontent.com/proxy/NDQuf9iSlTP_lQkbsWGaXKV3pTF15-ci0gD1BC3J1E4QEa4l3I6Qws5C5qBXJMgrhdRJIP7GAAJz3j4HTL_zhzD97Kodsy4YCskucv8TQjxgGxPfOPhpxzhX58af7vdmkhqCi_id_1UlWW2ugzyFhdYHTuD9ivz7=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/2010aa1c-fefa-49f8-b013-c33ab95aef40.jpeg\" alt=\"LinkedIn\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+<td style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border-radius:5px\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;max-width:100%\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF18P5L91EaXSFkW5pGVAExbV3NTEw4RaZ7HjU4X1Ax-2B-2FzSHnNfD4oz0KwN-2B1wzl8fTWRqwycT1AhCs6zb2YAbQ7iaMcWbPJohXi4O-2BWoet8JGQAwNowCzKAwVQGvxh4qSTnyRKycuy9OTuKdctRiNmaaDAxDOsv2B0tebfg6k7-2FDDSQ9olXDGVWpJsqJ4RS5Z7dZSVEmf7dK43zAV-2F5x1PTELLudmEupUQiMH1GpBnPjCOFYUfdARRyrtL-2FCmHQ7kVb5w3bltTA-2FKlgxgCq2XGqX3VjevGbrwTQsOBPAHnKv1E1tT9zRiMlaspzsRVh8VrXupTy-2BFeF3JpI9M-2BPjirggw2SNTwE79VpKV4tilLNz-2Boog6i2FNwQbonulXZkklPOw8p0U3zcHj5O3BaPuzw9gFlM2uctY7y0Y90A7GCKU-2FL4DX_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg8yhwWdHiiw8-2BqqL15ABfRCF8OILIG0snTSBHZHHEvzrAPA5-2FaTcHiR0lOdCOGpAvc3vahsjFWTTTRSTMrCugZHH2sTbnPnV3OJTuONXcQAiKy-2FOs-2FlL2-2F4xqkAgmlzk2hijFeYTxm1s4uzE2dMQ84hanKDo-2FAyocw9Qw46RIpwFTo-2BZJvZx-2FXeJr-2BM8e2Q5ZA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfmPLAJKm\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF18P5L91EaXSFkW5pGVAExbV3NTEw4RaZ7HjU4X1Ax-2B-2FzSHnNfD4oz0KwN-2B1wzl8fTWRqwycT1AhCs6zb2YAbQ7iaMcWbPJohXi4O-2BWoet8JGQAwNowCzKAwVQGvxh4qSTnyRKycuy9OTuKdctRiNmaaDAxDOsv2B0tebfg6k7-2FDDSQ9olXDGVWpJsqJ4RS5Z7dZSVEmf7dK43zAV-2F5x1PTELLudmEupUQiMH1GpBnPjCOFYUfdARRyrtL-2FCmHQ7kVb5w3bltTA-2FKlgxgCq2XGqX3VjevGbrwTQsOBPAHnKv1E1tT9zRiMlaspzsRVh8VrXupTy-2BFeF3JpI9M-2BPjirggw2SNTwE79VpKV4tilLNz-2Boog6i2FNwQbonulXZkklPOw8p0U3zcHj5O3BaPuzw9gFlM2uctY7y0Y90A7GCKU-2FL4DX_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg8yhwWdHiiw8-2BqqL15ABfRCF8OILIG0snTSBHZHHEvzrAPA5-2FaTcHiR0lOdCOGpAvc3vahsjFWTTTRSTMrCugZHH2sTbnPnV3OJTuONXcQAiKy-2FOs-2FlL2-2F4xqkAgmlzk2hijFeYTxm1s4uzE2dMQ84hanKDo-2FAyocw9Qw46RIpwFTo-2BZJvZx-2FXeJr-2BM8e2Q5ZA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfmPLAJKm\$\&amp;source=gmail\&amp;ust=1672441602017000\&amp;usg=AOvVaw39n3d8QS_BRdr3L1kEDNoI\"><span style=\"color:windowtext;text-decoration:none\"><span style=\"color:blue\"><img border=\"0\" width=\"75\" style=\"width:.7812in\" id=\"m_3927316636195078776m_-334363850199881765_x0000_i1026\" src=\"https://ci4.googleusercontent.com/proxy/UqCSDtdQ2DI7jafMJyqzf7m5mIXtrzlsZ_5JH0fnG-FGmIvkYFkfyTM5eicMTkpbG1DOubIdKBo24okpTrUFxuam3yZRXvV98yxelpy5RVxVSjnqQ6lKV6VwWDVg3EUwme_KyLKbtye_k97dowF9sNMxcoUtIAf6=s0-d-e1-ft#https://d3k81ch9hvuctc.cloudfront.net/company/TN6Dnf/images/ce3540b0-8968-4670-b30c-4bedd37a2fe7.jpeg\" alt=\"Pinterest\" class=\"CToWUd\" data-bit=\"iit\"></span></span></a><u></u><u></u></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+<td style=\"padding:0in 0in 0in 0in\">
+<div align=\"center\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;border-radius:5px\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;display:inline-block;max-width:100%\">
+<tbody>
+<tr>
+<td style=\"padding:0in 0in 0in 0in\"></td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=\"MsoNormal\"><u></u>&nbsp;<u></u></p>
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:0in 0in 0in 0in\">
+<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\" align=\"left\" width=\"100%\" style=\"width:100.0%;border-collapse:collapse\">
+<tbody>
+<tr>
+<td valign=\"top\" style=\"padding:15.0pt 13.5pt 11.25pt 13.5pt\">
+<p align=\"center\" style=\"text-align:center\"><span style=\"font-size:9.0pt;font-family:\&quot;Arial\&quot;,sans-serif;color:#888888\">© 2022 Capitol Lighting. All Rights Reserved.</span><span style=\"font-size:8.5pt;color:#403e3d\"><u></u><u></u></span></p>
+<p align=\"center\" style=\"text-align:center\"><span style=\"font-size:9.0pt;font-family:\&quot;Arial\&quot;,sans-serif;color:#888888\">Capitol Lighting | <a href=\"https://www.google.com/maps/search/365+State+Route+10+East+Hanover,+New+Jersey+07936?entry=gmail\&amp;source=g\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://www.google.com/maps/search/365%2BState%2BRoute%2B10%2BEast%2BHanover,%2BNew%2BJersey%2B07936?entry%3Dgmail%26source%3Dg\&amp;source=gmail\&amp;ust=1672441602017000\&amp;usg=AOvVaw3a71u2L3ZTApKjml2JSttO\">365 State Route 10 East Hanover, New Jersey 07936</a></span><span style=\"font-size:8.5pt;color:#403e3d\"><u></u><u></u></span></p>
+<p align=\"center\" style=\"text-align:center\"><span style=\"font-size:9.0pt;font-family:\&quot;Arial\&quot;,sans-serif;color:#888888\"><a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uAL-2FOI22tukjb33SngcCjDHtCY7LPA62yvSmw8I82g9VwxztB1AF8acZlt1XG35h3TvMfVVQGC-2FxPPjaWC5gCnksIsUtcryobulHO0cZ-2FYNOuuCk0M632Gwkf1R3nm6XqNdMavKy7cNy6Z9cpG65EkuiyWA7CCu-2BWnoIQIsktQ2YKayH-2BtTlvQMIMVailiGer6GvaC1fDx7LcudfSPDVCH2w4haQBesYURdfyQmY-2Bgvw87Cvvjb3OdeexhHpgZDoUcCMh1Z65Gn2MhrtNpqfHihnuEQZ53lHUPb7kwCZwP2lK4-2BUHK-2FW6B4ettCycZYy0MfiOwURk0M-2FeqkvDYNQn2H-2Bq4RTQmE5ttYy571RA5iuToP-2FSGgCVXGKJCSinjmuxOV-2F0T6P7kbtvV1oV3bSW2cYwSicn3qIs9vpi4cphrHQ-3D-3DbUFw_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg-2Bw5KCczSqbLuLCOTu9cPJwfrNy8ovyBV3V-2B1-2BA6jfC9-2Fpf-2Ba7L3f1nhIGZCW90d-2FEKSRBvzo1G5r9O62EEdryo2GG0dlX4Gm6Lf7JnEHb4symYVnIyH-2BRk-2BORx8mnIcjinuxgx4PK1JexJD1MzWQFKbk-2F-2FCfq52J8XOWjaGOunfWSSUG81HS8R9ReJhQ8lWYg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfiReH7jC\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF14kCqm2jJ9a-2BshC0eDq-2BD4uAL-2FOI22tukjb33SngcCjDHtCY7LPA62yvSmw8I82g9VwxztB1AF8acZlt1XG35h3TvMfVVQGC-2FxPPjaWC5gCnksIsUtcryobulHO0cZ-2FYNOuuCk0M632Gwkf1R3nm6XqNdMavKy7cNy6Z9cpG65EkuiyWA7CCu-2BWnoIQIsktQ2YKayH-2BtTlvQMIMVailiGer6GvaC1fDx7LcudfSPDVCH2w4haQBesYURdfyQmY-2Bgvw87Cvvjb3OdeexhHpgZDoUcCMh1Z65Gn2MhrtNpqfHihnuEQZ53lHUPb7kwCZwP2lK4-2BUHK-2FW6B4ettCycZYy0MfiOwURk0M-2FeqkvDYNQn2H-2Bq4RTQmE5ttYy571RA5iuToP-2FSGgCVXGKJCSinjmuxOV-2F0T6P7kbtvV1oV3bSW2cYwSicn3qIs9vpi4cphrHQ-3D-3DbUFw_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg-2Bw5KCczSqbLuLCOTu9cPJwfrNy8ovyBV3V-2B1-2BA6jfC9-2Fpf-2Ba7L3f1nhIGZCW90d-2FEKSRBvzo1G5r9O62EEdryo2GG0dlX4Gm6Lf7JnEHb4symYVnIyH-2BRk-2BORx8mnIcjinuxgx4PK1JexJD1MzWQFKbk-2F-2FCfq52J8XOWjaGOunfWSSUG81HS8R9ReJhQ8lWYg-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfiReH7jC\$\&amp;source=gmail\&amp;ust=1672441602017000\&amp;usg=AOvVaw1KYTOSJKnJO3k3M2O1L2X2\"><span style=\"color:#b88c1d\">Privacy
+ Policy</span></a>&nbsp; |&nbsp; <a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF1-2BsXnjNqWgDZUAefCnW1uZDIhJ9BY9g1SWJsMXjUVXPNTqwkwc-2BiQ1aje5MK-2B-2BxFsb0RzDxMC8debdcYdKMvSoKsFnXc8ZNDs10bE5Isy5cgSPggCAR86Bvb8xBSBHeCY3c7DAjsE4FZ9oL6hMH-2B76bgaa-2B1PRo-2F9cG1V-2FuSdWeTvtN752X0z80B2IAmWH5oqQ-3D-3DYB2x_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg3SJaIwv-2F9VC7NbxhVmhCHLfd7ly9Y9AuCoNknwcFOApVposKABlweDztJOj7vctovC-2FPPXYWnttEJd9fa4-2FCSqXuW5NKdrG5kBiAkHXNrE2Xu0PmqCHhPEj7fz2DKyByy30QSxvw9OrSl7oUtGkawrRU6-2Bj6ETGI72Wb1dEZ2fJDX5iRz77cBdoqZqkesLceA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlflSUPTZ0\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF1-2BsXnjNqWgDZUAefCnW1uZDIhJ9BY9g1SWJsMXjUVXPNTqwkwc-2BiQ1aje5MK-2B-2BxFsb0RzDxMC8debdcYdKMvSoKsFnXc8ZNDs10bE5Isy5cgSPggCAR86Bvb8xBSBHeCY3c7DAjsE4FZ9oL6hMH-2B76bgaa-2B1PRo-2F9cG1V-2FuSdWeTvtN752X0z80B2IAmWH5oqQ-3D-3DYB2x_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg3SJaIwv-2F9VC7NbxhVmhCHLfd7ly9Y9AuCoNknwcFOApVposKABlweDztJOj7vctovC-2FPPXYWnttEJd9fa4-2FCSqXuW5NKdrG5kBiAkHXNrE2Xu0PmqCHhPEj7fz2DKyByy30QSxvw9OrSl7oUtGkawrRU6-2Bj6ETGI72Wb1dEZ2fJDX5iRz77cBdoqZqkesLceA-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlflSUPTZ0\$\&amp;source=gmail\&amp;ust=1672441602017000\&amp;usg=AOvVaw0XgvtmjypaZb0NjB-4299C\">
+<span style=\"color:#b88c1d\">Manage Preferences</span></a>&nbsp; |&nbsp; <a>
+<span style=\"color:#b88c1d\">Unsubscribe</span></a></span><span style=\"font-size:8.5pt;color:#403e3d\"><u></u><u></u></span></p>
+<p align=\"center\" style=\"text-align:center\"><span style=\"font-size:8.5pt;color:#403e3d\">&nbsp;<u></u><u></u></span></p>
+<p align=\"center\" style=\"text-align:center\"><span style=\"font-size:9.0pt;font-family:\&quot;Arial\&quot;,sans-serif;color:#888888\">Payment options through Affirm are provided by these lending partners:
+<a href=\"https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn=ISq28Tlm-2FsnfbZQ4nvYF1-2BbM5zUkDJaCdG7daGKIeqbqjUO19wJcZR-2Fgxejsl6QCrejLCLwNVSaAltDxPFf-2Fs0TRevvtj1ZPGmSMJ-2BLapwYAqPC8sWO2zqcHbbrTvKrT2rOGgajc-2FBv2GQeUnmpLRdf45QDhoi5BZ9udpquZ0RlNMOxf6nBq7eP06iSYtmXAqEbgqlgl4IZLDXLhrFcy-2FGKR-2B4vu3CR2oTNOjxGE1OHwGidxDIkpV7vTNupIVCODvljmkUrmskAX-2BLcyj9R04vgn7njk5SQ4YuKxw2Z3hThy08zki46-2FrobZELwsVRpHwAmaN1Mptkgy-2FKY5gv7viimUtTeeBy9pk53FfXw85sHxCs48nbGePXUPXjlQqtB7Y9bzVNgpYF45KcqV-2BOkDRT-2BhCnjAnXLXtJHwDNmiI1FW0AbVcmoqWQP-2FVXaA7ILeGbuD_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg-2FhfoeNEqTD1fm3oCrwhk9CJlkeH47VVpIrb2lnoPJJYt8-2B0-2B4kzo5uRJCssChWsKac5FzQn27-2BsA4f4FzZq21jyABD9DW4gLxIsfirtIY6eYO1VpSK1QlV-2Bed0sm1tkL9luF-2BwtrwNIowHR2qyZkk8uLNPb0pwBtK49GNiKcbBCWCmcX1PPadG4WL-2B3ufsi1w-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfsQY1KqX\$\" target=\"_blank\" data-saferedirecturl=\"https://www.google.com/url?q=https://urldefense.com/v3/__https://trk.klclick.com/ls/click?upn%3DISq28Tlm-2FsnfbZQ4nvYF1-2BbM5zUkDJaCdG7daGKIeqbqjUO19wJcZR-2Fgxejsl6QCrejLCLwNVSaAltDxPFf-2Fs0TRevvtj1ZPGmSMJ-2BLapwYAqPC8sWO2zqcHbbrTvKrT2rOGgajc-2FBv2GQeUnmpLRdf45QDhoi5BZ9udpquZ0RlNMOxf6nBq7eP06iSYtmXAqEbgqlgl4IZLDXLhrFcy-2FGKR-2B4vu3CR2oTNOjxGE1OHwGidxDIkpV7vTNupIVCODvljmkUrmskAX-2BLcyj9R04vgn7njk5SQ4YuKxw2Z3hThy08zki46-2FrobZELwsVRpHwAmaN1Mptkgy-2FKY5gv7viimUtTeeBy9pk53FfXw85sHxCs48nbGePXUPXjlQqtB7Y9bzVNgpYF45KcqV-2BOkDRT-2BhCnjAnXLXtJHwDNmiI1FW0AbVcmoqWQP-2FVXaA7ILeGbuD_FXqgVx6XQXzbkjXQNCjvVrOpeiHyQkPa7D87S8GhO0qsZe6Ma3HJHWWdfsjo0bZ4omReVrb9d1-2BIfnwKNawNLAErmseT6e253XwTRlX4Y2hFwTL5z1HsKh8gTpTxDq8uGFXYON9eeLeoGqLT5-2BsftiYpZ9ZdnJ7yQguOv8w37ke41ZvkEYgfxjQB-2BKfkd2BpNnoEK-2BwTgiMRpgOFiMVlg-2FhfoeNEqTD1fm3oCrwhk9CJlkeH47VVpIrb2lnoPJJYt8-2B0-2B4kzo5uRJCssChWsKac5FzQn27-2BsA4f4FzZq21jyABD9DW4gLxIsfirtIY6eYO1VpSK1QlV-2Bed0sm1tkL9luF-2BwtrwNIowHR2qyZkk8uLNPb0pwBtK49GNiKcbBCWCmcX1PPadG4WL-2B3ufsi1w-3D-3D__;!!DCbAVzZNrAf4!F-llmSHVf5d9zuaSiVo4qLnQe1XsiZeeV5OShykW245UZLyyEQaZnA7jPTS-noH1WR9hzL7giaiFE4KPhDvlfsQY1KqX\$\&amp;source=gmail\&amp;ust=1672441602017000\&amp;usg=AOvVaw10dVPyzoJOHE3rr5-TRIC7\">
+<span style=\"color:#b88c1d\">affirm.com/lenders</span></a>.<br>
+Subject to eligibility.</span><span style=\"font-size:8.5pt;color:#403e3d\"><u></u><u></u></span></p>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div>
+<p class=\"MsoNormal\" align=\"center\" style=\"text-align:center\">
+<span style=\"font-size:1.0pt;color:white\">\&zwnj;<u></u><u></u></span></p>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+</body>
+</html>"]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<email:send doc:name="Send Email" doc:id="58bac336-e171-413b-b0e3-cc7a6bc1a04d" config-ref="Email_SMTP" fromAddress="muleysg07@outlook.com" subject="Shipping Confirmation">
+            <email:to-addresses>
+						<email:to-address value="muleysg07@outlook.com" />
+            </email:to-addresses>
+            <email:body contentType="text/html" encoding="UTF-8">
+            </email:body>
+        </email:send>
+			</route>
+		</scatter-gather>
+		<ee:transform doc:name="Extract Response for Logging" doc:id="117f2d89-7db2-400e-9e5b-531ec2b4d7d4" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var payload1 = payload[0].payload
+---
+{
+    "customer_notification": {
+        "notification": payload[0].payload.body,
+        "sent_to": payload[0].payload.to,
+        "sent_from": payload[0].payload.from,
+        "date": payload[0].payload.date_created,
+        "error_message": payload[0].payload.error_message default "no_error"
+    }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Log Response" doc:id="33683f0d-0858-4c64-b495-f4c598152316" message='#[payload]'/>
+	</flow>
+</mule>

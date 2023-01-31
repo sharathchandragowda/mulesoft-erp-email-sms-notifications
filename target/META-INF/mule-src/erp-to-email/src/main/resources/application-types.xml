@@ -1,0 +1,237 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<types:mule xmlns:types="http://www.mulesoft.org/schema/mule/types">
+  <types:catalog>
+    <types:type name="klaviyo-output" format="json">
+      <types:shape format="weave" example="examples/Klaviyo_Sample.json"><![CDATA[%dw 2.0
+
+type klaviyo_output = {|
+  token: String, 
+  event: String, 
+  customer_properties: {|
+    "$first_name": String, 
+    "$last_name": String, 
+    "$region": String, 
+    "$email": String, 
+    "$phone_number": String
+  |}, 
+  properties: {|
+    Line_Item: Array<{|      "Product Name": String,       "Product Image URL": String,       "Product URL": String,       "Product ID": String,       "Product SKU": String,       "Product Variant": String,       Quantity: Number {"typeId": "int"},       Price: Number {"typeId": "double"},       "Total Price": Number {"typeId": "double"},       "Estimated Ship Date": String    |}>, 
+    Profile: {|
+      "Customer Email Address": String, 
+      "Order Number": String, 
+      "Store Name": String, 
+      "Shipping Name": String, 
+      "Shipping Company": String, 
+      "Shipping Address Line 1": String, 
+      "Shipping Address Line 2": String, 
+      "Shipping City": String, 
+      "Shipping State": String, 
+      "Shipping Zip Code": String, 
+      "Shipping Country": String, 
+      "Shipping Phone": String, 
+      "Billing Name": String, 
+      "Billing Company": String, 
+      "Billing Address Line 1": String, 
+      "Billing Address Line 2": String, 
+      "Billing City": String, 
+      "Billing State": String, 
+      "Billing Zip Code": String, 
+      "Billing Country": String, 
+      "Billing Phone": String
+    |}
+  |}
+|} {"example": "{\\\"token\\\":\\\"TN6Dnf\\\",\\\"event\\\":\\\"Status Update\\\",\\\"customer_properties\\\":{\\\"\$first_name\\\":\\\"Homer\\\",\\\"\$last_name\\\":\\\"Simpson\\\",\\\"\$region\\\":\\\"NJ\\\",\\\"\$email\\\":\\\"homer@simpsons.com\\\",\\\"\$phone_number\\\":\\\"9735551234\\\"},\\\"properties\\\":{\\\"Line_Item\\\":[{\\\"Product Name\\\":\\\"Chapman and Myers Atlantic Large Pendant\\\",\\\"Product Image URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/hosting-source.bm23.com\\/29875\\/public\\/showroomtranx\\/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC\$  \\\",\\\"Product URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/www.1800lighting.com\\/generation-lighting-chapman-and-myers-atlantic-large-pendant-2643796.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJXGHqYsx\$  \\\",\\\"Product ID\\\":\\\"2643796\\\",\\\"Product SKU\\\":\\\"CP1041BBS\\\",\\\"Product Variant\\\":\\\"Finish: Burnished Brass, Glass: Clear\u00A0, Lamp Type: Incandescant\\\",\\\"Quantity\\\":2,\\\"Price\\\":559.97,\\\"Total Price\\\":1194.14,\\\"Estimated Ship Date\\\":\\\"2023-01-01\\\"},{\\\"Product Name\\\":\\\"Chapman and Myers Arden 24 Inch 10 Light Chandelier\\\",\\\"Product Image URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/hosting-source.bm23.com\\/29875\\/public\\/showroomtranx\\/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC\$  \\\",\\\"Product URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/www.1800lighting.com\\/generation-lighting-chapman-and-myers-arden-24-inch-10-light-chandelier-2778605.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJap6r4MB\$  \\\",\\\"Product ID\\\":\\\"2778605\\\",\\\"Product SKU\\\":\\\"CC12610BBS\\\",\\\"Product Variant\\\":\\\"Finish: Burnished Brass, Lamp Type: Incandescant\\\",\\\"Quantity\\\":1,\\\"Price\\\":1669.98,\\\"Total Price\\\":1780.62,\\\"Estimated Ship Date\\\":\\\"2023-02-01\\\"},{\\\"Product Name\\\":\\\"Cox 10 Inch Wall Sconce\\\",\\\"Product Image URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/hosting-source.bm23.com\\/29875\\/public\\/showroomtranx\\/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC\$  \\\",\\\"Product URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/www.1800lighting.com\\/quoizel-cox-10-inch-wall-sconce-4231078.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJdPLobk8\$  \\\",\\\"Product ID\\\":\\\"4231078\\\",\\\"Product SKU\\\":\\\"COX8604MBK\\\",\\\"Product Variant\\\":\\\"Finish: Matte Black, Color Temperature: Bulb Dependent, Lumen Output: Bulb Dependent, Glass: Clear, Lamp Type: Incandescant\\\",\\\"Quantity\\\":4,\\\"Price\\\":69.99,\\\"Total Price\\\":298.51,\\\"Estimated Ship Date\\\":\\\"2022-11-15\\\"},{\\\"Product Name\\\":\\\"Newbury 22 Inch Tall 3 Light Outdoor Wall Light\\\",\\\"Product Image URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/hosting-source.bm23.com\\/29875\\/public\\/showroomtranx\\/no-img.jpg__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJS8PvCMC\$  \\\",\\\"Product URL\\\":\\\"https:\\/\\/urldefense.com\\/v3\\/__https:\\/\\/www.1800lighting.com\\/quoizel-newbury-22-inch-tall-3-light-outdoor-wall-light-7388852.html__;!!DCbAVzZNrAf4!DwYCstiXexFCI64CgkfDea5tv5kTYGoEKYV9dLgdpuedM-EASou8BCFm1uJMgKsuzku-LIMBocHfxnf1bXXidisXJfdq6K9_\$  \\\",\\\"Product ID\\\":\\\"7388852\\\",\\\"Product SKU\\\":\\\"NY8318Z\\\",\\\"Product Variant\\\":\\\"Finish: Medici Bronze, Glass: Clear Beveled, Lamp Type: Incandescant\\\",\\\"Quantity\\\":4,\\\"Price\\\":215.99,\\\"Total Price\\\":921.2,\\\"Estimated Ship Date\\\":\\\"2022-12-01\\\"}],\\\"Profile\\\":{\\\"Customer Email Address\\\":\\\"homer@simpsons.com\\\",\\\"Order Number\\\":\\\"00062806\\\",\\\"Store Name\\\":\\\"\\\",\\\"Shipping Name\\\":\\\"Homer Simpson\\\",\\\"Shipping Company\\\":\\\"\\\",\\\"Shipping Address Line 1\\\":\\\"7 Downing Place\\\",\\\"Shipping Address Line 2\\\":\\\"\\\",\\\"Shipping City\\\":\\\"Livingston\\\",\\\"Shipping State\\\":\\\"NJ\\\",\\\"Shipping Zip Code\\\":\\\"07039\\\",\\\"Shipping Country\\\":\\\"US\\\",\\\"Shipping Phone\\\":\\\"9735551234\\\",\\\"Billing Name\\\":\\\"Homer Simpson\\\",\\\"Billing Company\\\":\\\"\\\",\\\"Billing Address Line 1\\\":\\\"7 Downing Place\\\",\\\"Billing Address Line 2\\\":\\\"\\\",\\\"Billing City\\\":\\\"Livingston\\\",\\\"Billing State\\\":\\\"NJ\\\",\\\"Billing Zip Code\\\":\\\"07039\\\",\\\"Billing Country\\\":\\\"US\\\",\\\"Billing Phone\\\":\\\"9735551234\\\"}}}"}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="db-output" format="json">
+      <types:shape format="weave" example="examples/db-response.JSON"><![CDATA[%dw 2.0
+
+type db_output = Array<{|  ProductID: String,   CombinedDiscount: String,   PrimVal: String,   StoreName: String,   ProductImageURL: String,   BillingName: String,   OrderTotal: String,   ManagerEmail: String,   Shipping: String,   Balance: String,   ClydePortalURL: String,   Price: String,   ManagerTitle: String,   EstimatedArrivalDate: String,   ShippingAddressLine2: String,   TrackingURL: String,   AmountCredited: String,   Tax: String,   ShippingMethod: String,   ShippingZipCode: String,   PaymentLast4Digits: String,   Deposits: String,   ShippingAddressLine1: String,   ProductSKU: String,   EstimatedShipDate: String,   CustomerClass: String,   Subtotal: String,   KlaviyoToken: String,   TrackingID: String,   ShowroomLocation: String,   PaymentExpiration: String,   BillingZipCode: String,   BillingPhone: String,   BillingState: String,   ShippingPhone: String,   ShippingCountry: String,   ShowroomCustomerID: String,   OrderNumber: String,   ProductName: String,   CustomerEmailAddress: String,   ManagerName: String,   ProductVariant: String,   ProductURL: String,   MessageEvent: String,   ShippingState: String,   ShipDate: String,   ShippingCity: String,   BillingCity: String,   ProLevel: String,   Quantity: String,   TotalPrice: String,   DetailID: String,   HeaderID: String,   IsProcessed: String,   CustomerEmail: String,   ShippingName: String,   BillingCountry: String,   ManagerPhone: String,   ShippingCompany: String,   BillingCompany: String,   BillingAddressLine1: String,   BillingAddressLine2: String,   PrimaryValue: String,   PaymentType: String|}> {"example": "[{\\\"ProductID\\\":\\\"2636688\\\",\\\"CombinedDiscount\\\":\\\"24\\\",\\\"PrimVal\\\":\\\"ORD-SHIPDATE-CHG|70365168\\\",\\\"StoreName\\\":\\\"Boca Raton\\\",\\\"ProductImageURL\\\":\\\"https:\\/\\/transform.dis.commercecloud.salesforce.com\\/transform\\/BCFP_PRD\\/on\\/demandware.static\\/-\\/Sites-masterCatalog_capitollighting\\/default\\/images\\/original\\/Elegant-Decor_MR4077BK.jpg\\\",\\\"BillingName\\\":\\\"Lawrence And Jacqueline Hasen\\\",\\\"OrderTotal\\\":\\\"216\\\",\\\"ManagerEmail\\\":\\\"ewilliams@1800lighting.com\\\",\\\"Shipping\\\":\\\"0\\\",\\\"Balance\\\":\\\"-955.97\\\",\\\"ClydePortalURL\\\":\\\"\\\",\\\"Price\\\":\\\"216\\\",\\\"ManagerTitle\\\":\\\"\\\",\\\"EstimatedArrivalDate\\\":\\\"12\\/27\\/2022\\\",\\\"ShippingAddressLine2\\\":\\\"\\\",\\\"TrackingURL\\\":\\\"NULL\\\",\\\"AmountCredited\\\":\\\"1171.97\\\",\\\"Tax\\\":\\\"0\\\",\\\"ShippingMethod\\\":\\\"NULL\\\",\\\"ShippingZipCode\\\":\\\"33487\\\",\\\"PaymentLast4Digits\\\":\\\"************5801         \\\",\\\"Deposits\\\":\\\"1171.97\\\",\\\"ShippingAddressLine1\\\":\\\"7301 NORTH FEDERAL HWY\\\",\\\"ProductSKU\\\":\\\"MR4077BK\\\",\\\"EstimatedShipDate\\\":\\\"12\\/27\\/2022\\\",\\\"CustomerClass\\\":\\\"  \\\",\\\"Subtotal\\\":\\\"216\\\",\\\"KlaviyoToken\\\":\\\"TN6Dnf\\\",\\\"TrackingID\\\":\\\"NULL\\\",\\\"ShowroomLocation\\\":\\\"FBRW\\\",\\\"PaymentExpiration\\\":\\\"0\\\",\\\"BillingZipCode\\\":\\\"33486\\\",\\\"BillingPhone\\\":\\\"206-940-1279\\\",\\\"BillingState\\\":\\\"FL\\\",\\\"ShippingPhone\\\":\\\"206-940-1279\\\",\\\"ShippingCountry\\\":\\\"USA\\\",\\\"ShowroomCustomerID\\\":\\\"765165\\\",\\\"OrderNumber\\\":\\\"70365168\\\",\\\"ProductName\\\":\\\"Eternity Decorative Mirrors by Elegant Decor\\\",\\\"CustomerEmailAddress\\\":\\\"aquinnahholdings@gmail.com\\\",\\\"ManagerName\\\":\\\"Elan Williams\\\",\\\"ProductVariant\\\":\\\"Finish:<\\/b> Black, Glass:<\\/b> Clear Mirror Beveled\\\",\\\"ProductURL\\\":\\\"https:\\/\\/www.1800lighting.com\\/elegant-decor-eternity-decorative-mirrors-2636688.html\\\",\\\"MessageEvent\\\":\\\"Showroom - Status Update\\\",\\\"ShippingState\\\":\\\"FL\\\",\\\"ShipDate\\\":\\\"NULL\\\",\\\"ShippingCity\\\":\\\"Boca Raton\\\",\\\"BillingCity\\\":\\\"Boca Raton\\\",\\\"ProLevel\\\":\\\"\\\",\\\"Quantity\\\":\\\"1\\\",\\\"TotalPrice\\\":\\\"216\\\",\\\"DetailID\\\":\\\"1\\\",\\\"HeaderID\\\":\\\"1\\\",\\\"IsProcessed\\\":\\\"1\\\",\\\"CustomerEmail\\\":\\\"aquinnahholdings@gmail.com\\\",\\\"ShippingName\\\":\\\"Capitol Lighting - Boca Raton\\\",\\\"BillingCountry\\\":\\\"USA\\\",\\\"ManagerPhone\\\":\\\"(561) 994-9570\\\",\\\"ShippingCompany\\\":\\\"\\\",\\\"BillingCompany\\\":\\\"\\\",\\\"BillingAddressLine1\\\":\\\"1811 Sw 17th St\\\",\\\"BillingAddressLine2\\\":\\\"\\\",\\\"PrimaryValue\\\":\\\"ORD-SHIPDATE-CHG|70365168\\\",\\\"PaymentType\\\":\\\"Visa\\\"}]"}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="html-input-payload" format="json">
+      <types:shape format="weave" example="examples/html-inputPayload-1.JSON"><![CDATA[%dw 2.0
+
+type html_input_payload = {|
+  token: String, 
+  event: String, 
+  customer_properties: {|
+    first_name: String, 
+    last_name: String, 
+    region: String, 
+    email: String, 
+    phone_number: String
+  |}, 
+  properties: {|
+    Line_Item: Array<{|      "Product Name": String,       "Product Image URL": String,       "Product URL": String,       "Product ID": String,       "Product SKU": String,       "Product Variant": String,       Quantity: Number {"typeId": "int"},       Price: Number {"typeId": "int"},       "Total Price": Number {"typeId": "int"},       "Estimated Ship Date": String    |}>, 
+    Profile: {|
+      "Customer Email Address": String, 
+      "Order Number": String, 
+      "Store Name": String, 
+      "Shipping Name": String, 
+      "Shipping Company": String, 
+      "Shipping Address Line 1": String, 
+      "Shipping Address Line 2": String, 
+      "Shipping City": String, 
+      "Shipping State": String, 
+      "Shipping Zip Code": String, 
+      "Shipping Country": String, 
+      "Shipping Phone": String, 
+      "Billing Name": String, 
+      "Billing Company": String, 
+      "Billing Address Line 1": String, 
+      "Billing Address Line 2": String, 
+      "Billing City": String, 
+      "Billing State": String, 
+      "Billing Zip Code": String, 
+      "Billing Country": String, 
+      "Billing Phone": String
+    |}
+  |}
+|} {"example": "{\\\"token\\\":\\\"TN6Dnf\\\",\\\"event\\\":\\\"Showroom - Status Update\\\",\\\"customer_properties\\\":{\\\"first_name\\\":\\\"Elan\\\",\\\"last_name\\\":\\\"Williams\\\",\\\"region\\\":\\\"FL\\\",\\\"email\\\":\\\"aquinnahholdings@gmail.com\\\",\\\"phone_number\\\":\\\"206-940-1279\\\"},\\\"properties\\\":{\\\"Line_Item\\\":[{\\\"Product Name\\\":\\\"Eternity Decorative Mirrors by Elegant Decor\\\",\\\"Product Image URL\\\":\\\"https:\\/\\/transform.dis.commercecloud.salesforce.com\\/transform\\/BCFP_PRD\\/on\\/demandware.static\\/-\\/Sites-masterCatalog_capitollighting\\/default\\/images\\/original\\/Elegant-Decor_MR4077BK.jpg\\\",\\\"Product URL\\\":\\\"https:\\/\\/www.1800lighting.com\\/elegant-decor-eternity-decorative-mirrors-2636688.html\\\",\\\"Product ID\\\":\\\"2636688\\\",\\\"Product SKU\\\":\\\"MR4077BK\\\",\\\"Product Variant\\\":\\\"Finish:<\\/b> Black, Glass:<\\/b> Clear Mirror Beveled\\\",\\\"Quantity\\\":1,\\\"Price\\\":216,\\\"Total Price\\\":216,\\\"Estimated Ship Date\\\":\\\"12\\/27\\/2022\\\"}],\\\"Profile\\\":{\\\"Customer Email Address\\\":\\\"aquinnahholdings@gmail.com\\\",\\\"Order Number\\\":\\\"70365168\\\",\\\"Store Name\\\":\\\"Boca Raton\\\",\\\"Shipping Name\\\":\\\"Capitol Lighting - Boca Raton\\\",\\\"Shipping Company\\\":\\\"\\\",\\\"Shipping Address Line 1\\\":\\\"7301 NORTH FEDERAL HWY\\\",\\\"Shipping Address Line 2\\\":\\\"\\\",\\\"Shipping City\\\":\\\"Boca Raton\\\",\\\"Shipping State\\\":\\\"FL\\\",\\\"Shipping Zip Code\\\":\\\"33487\\\",\\\"Shipping Country\\\":\\\"USA\\\",\\\"Shipping Phone\\\":\\\"206-940-1279\\\",\\\"Billing Name\\\":\\\"Lawrence And Jacqueline Hasen\\\",\\\"Billing Company\\\":\\\"\\\",\\\"Billing Address Line 1\\\":\\\"1811 Sw 17th St\\\",\\\"Billing Address Line 2\\\":\\\"\\\",\\\"Billing City\\\":\\\"Boca Raton\\\",\\\"Billing State\\\":\\\"FL\\\",\\\"Billing Zip Code\\\":\\\"33486\\\",\\\"Billing Country\\\":\\\"USA\\\",\\\"Billing Phone\\\":\\\"206-940-1279\\\"}}}"}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Payload" format="java">
+      <types:shape format="weave" example="weave/autogenerated/ca9a2e33-8a59-424a-91b3-ab1f75932333/Input-Payload.wev" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[%dw 2.0
+
+type auto_ca9a2e33_8a59_424a_91b3_ab1f75932333_Input_Payload = Any
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Attributes" format="java">
+      <types:shape format="weave" example="weave/autogenerated/ca9a2e33-8a59-424a-91b3-ab1f75932333/Input-Attributes.wev" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[%dw 2.0
+
+type auto_ca9a2e33_8a59_424a_91b3_ab1f75932333_Input_Attributes = {|
+  clientCertificate?: {|
+    publicKey?: {|  |}, 
+    "type"?: String, 
+    encoded?: Binary
+  |}, 
+  headers: {|  |}, 
+  listenerPath: String, 
+  method: String, 
+  queryParams: {|  |}, 
+  queryString: String, 
+  relativePath: String, 
+  remoteAddress: String, 
+  requestPath: String, 
+  requestUri: String, 
+  scheme: String, 
+  uriParams: {|  |}, 
+  version: String, 
+  localAddress: String
+|}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Variables-outboundHeaders" format="java">
+      <types:shape format="weave" example="weave/autogenerated/ca9a2e33-8a59-424a-91b3-ab1f75932333/Input-Variables-outboundHeaders.wev" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[%dw 2.0
+
+type auto_ca9a2e33_8a59_424a_91b3_ab1f75932333_Input_Variables_outboundHeaders = {|  |}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Variables-httpStatus" format="java">
+      <types:shape format="raml" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[#%RAML 1.0 DataType
+type: string]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Payload" format="json">
+      <types:shape format="weave" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[%dw 2.0
+
+type auto_ca9a2e33_8a59_424a_91b3_ab1f75932333_Output_Payload = {| Message?: String |} {"example": "{\\\"Message\\\":\\\"Shipping Notification Sent Successfully\\\"}"}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Attributes" format="java">
+      <types:shape format="weave" example="weave/autogenerated/ca9a2e33-8a59-424a-91b3-ab1f75932333/Output-Attributes.wev" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[%dw 2.0
+
+type auto_ca9a2e33_8a59_424a_91b3_ab1f75932333_Output_Attributes = Null
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Variables-outboundHeaders" format="java">
+      <types:shape format="weave" example="weave/autogenerated/ca9a2e33-8a59-424a-91b3-ab1f75932333/Output-Variables-outboundHeaders.wev" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[%dw 2.0
+
+type auto_ca9a2e33_8a59_424a_91b3_ab1f75932333_Output_Variables_outboundHeaders = {|  |}
+
+]]></types:shape>
+    </types:type>
+    <types:type name="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Variables-httpStatus" format="java">
+      <types:shape format="raml" autogeneratedOrigin="0c1de8da-a3c7-4127-afbe-b7a2d146eba9"><![CDATA[#%RAML 1.0 DataType
+type: string]]></types:shape>
+    </types:type>
+  </types:catalog>
+  <types:enrichment select="#0987c66a-0604-4b59-92e1-1d36d29219c5">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="db-output"/>
+        </types:message>
+      </types:input-event>
+      <types:output-event>
+        <types:message>
+          <types:payload type="klaviyo-output"/>
+        </types:message>
+      </types:output-event>
+    </types:processor-declaration>
+  </types:enrichment>
+  <types:enrichment select="#a6034c66-9ad2-4406-8594-a99d8de30fe2">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="db-output"/>
+        </types:message>
+      </types:input-event>
+      <types:output-event>
+        <types:message>
+          <types:payload type="klaviyo-output"/>
+        </types:message>
+      </types:output-event>
+    </types:processor-declaration>
+  </types:enrichment>
+  <types:enrichment select="#1e6cc6b3-756f-40de-b8eb-4f17a7b212fe">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="html-input-payload"/>
+        </types:message>
+      </types:input-event>
+    </types:processor-declaration>
+  </types:enrichment>
+  <types:enrichment select="#528271c6-2bfb-4aad-b09f-29309d773e02">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="html-input-payload"/>
+        </types:message>
+      </types:input-event>
+    </types:processor-declaration>
+  </types:enrichment>
+  <types:enrichment select="#ca9a2e33-8a59-424a-91b3-ab1f75932333">
+    <types:processor-declaration>
+      <types:input-event>
+        <types:message>
+          <types:payload type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Payload"/>
+          <types:attributes type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Attributes"/>
+        </types:message>
+        <types:variables>
+          <types:variable name="outboundHeaders" type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Variables-outboundHeaders"/>
+          <types:variable name="httpStatus" type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Input-Variables-httpStatus"/>
+        </types:variables>
+      </types:input-event>
+      <types:output-event>
+        <types:message>
+          <types:payload type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Payload"/>
+          <types:attributes type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Attributes"/>
+        </types:message>
+        <types:variables>
+          <types:variable name="outboundHeaders" type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Variables-outboundHeaders"/>
+          <types:variable name="httpStatus" type="auto_ca9a2e33-8a59-424a-91b3-ab1f75932333_Output-Variables-httpStatus"/>
+        </types:variables>
+      </types:output-event>
+    </types:processor-declaration>
+  </types:enrichment>
+</types:mule>
